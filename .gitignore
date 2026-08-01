@@ -1,3 +1,4 @@
 psw
 *.test
 dist/
+.DS_Store

@@ -25,7 +25,7 @@ opened an agent in is one keystroke away.
 ## Install
 
 ```sh
-brew install baoyudu/tap/psw        # once released
+brew install --cask baoyudu/tap/psw   # macOS
 # or from source:
 go install github.com/baoyudu/psw/cmd/psw@latest
 ```
