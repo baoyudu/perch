@@ -133,10 +133,12 @@ func fromMessage(m map[string]any) (string, string) {
 	return "", ""
 }
 
-// usable filters out synthetic/system content that would make a useless preview.
+// usable filters out synthetic/system content that would make a useless
+// preview: system-reminder tags, caveat banners, raw JSON/structured output.
 func usable(text string) string {
 	t := strings.TrimSpace(text)
-	if t == "" || strings.HasPrefix(t, "<") || strings.HasPrefix(t, "Caveat:") {
+	if t == "" || strings.HasPrefix(t, "<") || strings.HasPrefix(t, "Caveat:") ||
+		strings.HasPrefix(t, "{") || strings.HasPrefix(t, "[") {
 		return ""
 	}
 	return t
