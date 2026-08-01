@@ -125,6 +125,62 @@ func TestPinReordersAndPersists(t *testing.T) {
 	}
 }
 
+func TestFuzzyMatchPositions(t *testing.T) {
+	// Substring: contiguous positions at the match site.
+	score, pos, ok := fuzzyMatch("nal", "prior-analyst")
+	if !ok || len(pos) != 3 || pos[0] != 7 || pos[2] != 9 {
+		t.Fatalf("substring match: score=%d pos=%v ok=%v", score, pos, ok)
+	}
+	// Subsequence: increasing positions on the matched runes.
+	_, pos, ok = fuzzyMatch("pran", "prior-analyst")
+	if !ok || len(pos) != 4 {
+		t.Fatalf("subsequence match failed: %v", pos)
+	}
+	for i := 1; i < len(pos); i++ {
+		if pos[i] <= pos[i-1] {
+			t.Fatalf("positions must increase: %v", pos)
+		}
+	}
+	// Substring should outrank subsequence of the same query.
+	sub, _, _ := fuzzyMatch("ana", "prior-analyst")
+	seq, _, _ := fuzzyMatch("pns", "prior-analyst")
+	if sub <= seq {
+		t.Errorf("substring score %d should beat subsequence %d", sub, seq)
+	}
+	if _, _, ok := fuzzyMatch("zzz", "prior-analyst"); ok {
+		t.Error("no match expected")
+	}
+}
+
+func TestMouseWheelAndClick(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = next.(Model)
+	// Click the second visible row (header=0, border=1, rows start at 2).
+	next, _ = m.Update(tea.MouseMsg{X: 4, Y: 3, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+	m = next.(Model)
+	if m.cursor != 1 {
+		t.Fatalf("click should select row 1, cursor=%d", m.cursor)
+	}
+	next, _ = m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp})
+	m = next.(Model)
+	if m.cursor != 0 {
+		t.Fatalf("wheel up should move cursor to 0, cursor=%d", m.cursor)
+	}
+}
+
+func TestZeroSizeWindowDoesNotPanic(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 0, Height: 0})
+	m = next.(Model)
+	if m.View() == "" {
+		t.Error("view should still render with defaults on 0x0 pty")
+	}
+	next, _ = m.Update(tea.WindowSizeMsg{Width: 8, Height: 3})
+	m = next.(Model)
+	_ = m.View() // tiny real sizes must not panic either
+}
+
 func TestEscCancels(t *testing.T) {
 	m := testModel(t)
 	next, cmd := m.Update(key(tea.KeyEsc))
