@@ -1,6 +1,13 @@
-# perch — 给 agent 项目一根栖木
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+    <img src="docs/logo.png" alt="perch" width="400">
+  </picture>
+</p>
 
-[English](README.md) | **中文**
+<p align="center"><i>给 agent 项目一根栖木</i></p>
+
+<p align="center"><a href="README.md">English</a> | <b>中文</b></p>
 
 新开一个终端，一键回到你刚才用 **Claude Code** 或 **Codex** 工作过的项目——
 可以顺手把 agent 重新拉起来，甚至直接续接上一次对话。

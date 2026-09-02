@@ -1,6 +1,13 @@
-# perch — a perch for your agent projects
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+    <img src="docs/logo.png" alt="perch" width="400">
+  </picture>
+</p>
 
-**English** | [中文](README.zh-CN.md)
+<p align="center"><i>a perch for your agent projects</i></p>
+
+<p align="center"><b>English</b> | <a href="README.zh-CN.md">中文</a></p>
 
 Jump straight from a fresh terminal into the project you were just working on
 with **Claude Code** or **Codex** — and optionally relaunch the agent, or even
