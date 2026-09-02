@@ -70,7 +70,7 @@ claude 或 codex 会话的项目——面板标题会变色提示当前范围。
 ignore = ["**/.worktrees/**", "**/.claude/worktrees/**", "**/.claude-worktrees/**", "**/node_modules/**"]
 
 [defaults]
-action = "cd"          # Enter 的动作：cd | claude | codex
+action = "cd"          # Enter 的动作：cd | claude | codex | resume
 command = "p"          # shell 函数的名字
 claude_args = []       # 每次启动 claude 附加的参数
 codex_args = []        # 每次启动 codex 附加的参数

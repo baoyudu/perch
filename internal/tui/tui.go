@@ -26,7 +26,7 @@ const (
 	ActCD     Action = config.ActionCD
 	ActClaude Action = config.ActionClaude
 	ActCodex  Action = config.ActionCodex
-	ActResume Action = "resume"
+	ActResume Action = config.ActionResume
 )
 
 // Result is what the user picked; nil result means cancelled.
@@ -442,7 +442,7 @@ func (m Model) openSettings() (tea.Model, tea.Cmd) {
 
 // settingOptions lists the cycleable values per settings row.
 var settingOptions = [][]string{
-	{config.ActionCD, config.ActionClaude, config.ActionCodex}, // default action
+	{config.ActionCD, config.ActionClaude, config.ActionCodex, config.ActionResume}, // default action
 	{"nerd", "plain"}, // icons
 }
 
@@ -1017,7 +1017,14 @@ func (m Model) renderPreviewLines(cw int) []string {
 	}
 	add("")
 	action := m.cfg.ActionFor(p.Path)
-	add(keySt.Render(" enter ") + dim.Render(" → ") + actionStyle(action).Render(action))
+	if action == config.ActionResume && p.LastAgent == "" {
+		action = config.ActionCD // nothing to resume yet; enter falls back
+	}
+	st := actionStyle(action)
+	if action == config.ActionResume {
+		st = actionStyle(p.LastAgent) // tint by the agent that would resume
+	}
+	add(keySt.Render(" enter ") + dim.Render(" → ") + st.Render(action))
 	add(dim.Render(strings.Repeat("┄", cw)))
 
 	if snip, ok := m.previews[p.Path]; ok {

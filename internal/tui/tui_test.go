@@ -86,6 +86,43 @@ func TestActionKeys(t *testing.T) {
 	}
 }
 
+func TestResumeAsDefaultAction(t *testing.T) {
+	m := testModel(t)
+	m.cfg.Defaults.Action = config.ActionResume
+	next, _ := m.Update(key(tea.KeyEnter))
+	m = next.(Model)
+	if m.result == nil || m.result.Action != ActResume {
+		t.Fatalf("enter with resume default should resume, got %+v", m.result)
+	}
+
+	m = testModel(t)
+	m.cfg.Defaults.Action = config.ActionResume
+	m.all[0].LastAgent = "" // nothing to resume
+	next, _ = m.Update(key(tea.KeyEnter))
+	m = next.(Model)
+	if m.result == nil || m.result.Action != ActCD {
+		t.Fatalf("resume default without history should fall back to cd, got %+v", m.result)
+	}
+}
+
+func TestSettingsOfferResume(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(key(tea.KeyCtrlE))
+	m = next.(Model)
+	for i := 0; i < 3; i++ { // cd → claude → codex → resume
+		next, _ = m.Update(key(tea.KeyRight))
+		m = next.(Model)
+	}
+	if m.cfg.Defaults.Action != config.ActionResume {
+		t.Fatalf("third cycle should reach resume, got %q", m.cfg.Defaults.Action)
+	}
+	next, _ = m.Update(key(tea.KeyRight)) // wraps back to cd
+	m = next.(Model)
+	if m.cfg.Defaults.Action != config.ActionCD {
+		t.Fatalf("cycle should wrap to cd, got %q", m.cfg.Defaults.Action)
+	}
+}
+
 func TestResumeWithoutHistoryFallsBackToCD(t *testing.T) {
 	m := testModel(t)
 	m.all[0].LastAgent = ""

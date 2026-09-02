@@ -73,7 +73,7 @@ Optional, at `~/.config/perch/config.toml`:
 ignore = ["**/.worktrees/**", "**/.claude/worktrees/**", "**/.claude-worktrees/**", "**/node_modules/**"]
 
 [defaults]
-action = "cd"          # what Enter does: cd | claude | codex
+action = "cd"          # what Enter does: cd | claude | codex | resume
 command = "p"          # name of the shell function
 claude_args = []       # extra args whenever claude is launched
 codex_args = []        # extra args whenever codex is launched

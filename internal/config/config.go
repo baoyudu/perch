@@ -18,6 +18,7 @@ const (
 	ActionCD     = "cd"
 	ActionClaude = "claude"
 	ActionCodex  = "codex"
+	ActionResume = "resume" // reopen the project's last agent session (cd if none)
 )
 
 // DefaultIgnore is used when the config file does not set `ignore`.
