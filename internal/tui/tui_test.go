@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/baoyudu/psw/internal/config"
 	"github.com/baoyudu/psw/internal/index"
+	"github.com/baoyudu/psw/internal/preview"
 )
 
 func testModel(t *testing.T) Model {
@@ -19,9 +21,9 @@ func testModel(t *testing.T) Model {
 	}
 	now := time.Now()
 	projects := []index.Project{
-		{Path: "/w/prior-analyst", Name: "prior-analyst", LastUsed: now.Add(-1 * time.Hour), LastAgent: "claude"},
-		{Path: "/w/learnitall", Name: "learnitall", LastUsed: now.Add(-24 * time.Hour), LastAgent: "codex"},
-		{Path: "/w/reports", Name: "reports", LastUsed: now.Add(-48 * time.Hour), LastAgent: "claude"},
+		{Path: "/w/prior-analyst", Name: "prior-analyst", LastUsed: now.Add(-1 * time.Hour), LastAgent: "claude", ClaudeLast: now.Add(-1 * time.Hour)},
+		{Path: "/w/learnitall", Name: "learnitall", LastUsed: now.Add(-24 * time.Hour), LastAgent: "codex", CodexLast: now.Add(-24 * time.Hour)},
+		{Path: "/w/reports", Name: "reports", LastUsed: now.Add(-48 * time.Hour), LastAgent: "claude", ClaudeLast: now.Add(-48 * time.Hour)},
 	}
 	return New(cfg, projects)
 }
@@ -122,6 +124,164 @@ func TestPinReordersAndPersists(t *testing.T) {
 	}
 	if !m.cfg.Pinned("/w/reports") {
 		t.Error("pin should persist to config state")
+	}
+}
+
+func TestTabCyclesScope(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(key(tea.KeyTab)) // claude scope
+	m = next.(Model)
+	if len(m.filtered) != 2 {
+		t.Fatalf("claude scope should show 2 projects, got %d", len(m.filtered))
+	}
+	for _, idx := range m.filtered {
+		if m.all[idx].ClaudeLast.IsZero() {
+			t.Errorf("claude scope leaked %s", m.all[idx].Name)
+		}
+	}
+	next, _ = m.Update(key(tea.KeyTab)) // codex scope
+	m = next.(Model)
+	if len(m.filtered) != 1 || m.all[m.filtered[0]].Name != "learnitall" {
+		t.Fatalf("codex scope should show only learnitall, got %d", len(m.filtered))
+	}
+	next, _ = m.Update(key(tea.KeyTab)) // back to all
+	m = next.(Model)
+	if len(m.filtered) != 3 {
+		t.Fatalf("third tab should return to all, got %d", len(m.filtered))
+	}
+	next, _ = m.Update(key(tea.KeyShiftTab)) // backwards → codex
+	m = next.(Model)
+	if len(m.filtered) != 1 {
+		t.Fatalf("shift+tab should cycle backwards to codex, got %d", len(m.filtered))
+	}
+}
+
+func TestScopeCombinesWithQuery(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(key(tea.KeyTab)) // claude scope
+	m = next.(Model)
+	m = typeRunes(m, "learn") // learnitall is codex-only
+	if len(m.filtered) != 0 {
+		t.Fatalf("query outside scope should match nothing, got %d", len(m.filtered))
+	}
+}
+
+func TestRightArrowFocusesPreviewEscReturns(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = next.(Model)
+	next, _ = m.Update(key(tea.KeyRight))
+	m = next.(Model)
+	if m.mode != modePreview {
+		t.Fatalf("right at end of input should focus preview, mode=%d", m.mode)
+	}
+	next, cmd := m.Update(key(tea.KeyEsc))
+	m = next.(Model)
+	if m.mode != modeList || cmd != nil || m.result != nil {
+		t.Fatalf("esc from preview should return to list without quitting")
+	}
+}
+
+func TestRightArrowMidInputEditsFilter(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = next.(Model)
+	m = typeRunes(m, "re")
+	next, _ = m.Update(key(tea.KeyLeft)) // cursor now mid-text
+	m = next.(Model)
+	next, _ = m.Update(key(tea.KeyRight)) // back to end: cursor move, not focus
+	m = next.(Model)
+	if m.mode != modePreview {
+		// first right only moved the cursor; the second should switch
+		next, _ = m.Update(key(tea.KeyRight))
+		m = next.(Model)
+	}
+	if m.mode != modePreview {
+		t.Fatal("right at end of input should switch to preview")
+	}
+	if m.input.Value() != "re" {
+		t.Fatalf("filter text should be untouched, got %q", m.input.Value())
+	}
+}
+
+func TestSettingsCycleAndPersist(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(key(tea.KeyCtrlE))
+	m = next.(Model)
+	if m.mode != modeSettings {
+		t.Fatal("ctrl+e should open settings")
+	}
+	next, _ = m.Update(key(tea.KeyEnter)) // cycle default action: cd → claude
+	m = next.(Model)
+	if m.result != nil {
+		t.Fatal("enter in settings must not pick a project")
+	}
+	if m.cfg.Defaults.Action != config.ActionClaude {
+		t.Fatalf("default action = %q, want claude", m.cfg.Defaults.Action)
+	}
+	cfg2, err := config.Load() // same PSW_CONFIG_DIR: reads state.json back
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg2.Defaults.Action != config.ActionClaude {
+		t.Error("default action should persist via state.json")
+	}
+	next, _ = m.Update(key(tea.KeyDown)) // icons row
+	m = next.(Model)
+	next, _ = m.Update(key(tea.KeyRight)) // nerd → plain
+	m = next.(Model)
+	if m.cfg.UI.Icons != "plain" || m.ic.prompt != plainIcons.prompt {
+		t.Fatalf("icons should switch live, got %q", m.cfg.UI.Icons)
+	}
+	next, _ = m.Update(key(tea.KeyEsc))
+	m = next.(Model)
+	if m.mode != modeList {
+		t.Error("esc should close settings")
+	}
+}
+
+func TestPreviewScrollClamps(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 10})
+	m = next.(Model)
+	long := strings.Repeat("long preview content ", 40)
+	next, _ = m.Update(previewMsg{"/w/prior-analyst", preview.Snippet{Agent: "claude", Role: "assistant", Text: long}})
+	m = next.(Model)
+	next, _ = m.Update(key(tea.KeyRight))
+	m = next.(Model)
+	for i := 0; i < 100; i++ {
+		next, _ = m.Update(key(tea.KeyDown))
+		m = next.(Model)
+	}
+	maxOff := len(m.renderPreviewLines(m.previewWidth()-4)) - m.listHeight()
+	if maxOff <= 0 {
+		t.Fatal("test needs overflowing preview content")
+	}
+	if m.previewOff != maxOff {
+		t.Fatalf("offset %d, want clamped at %d", m.previewOff, maxOff)
+	}
+	for i := 0; i < 200; i++ {
+		next, _ = m.Update(key(tea.KeyUp))
+		m = next.(Model)
+	}
+	if m.previewOff != 0 {
+		t.Fatalf("offset should clamp at 0, got %d", m.previewOff)
+	}
+}
+
+func TestFirstRunHintDismissed(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = next.(Model)
+	if !containsPlain(m.View(), " ^e settings ") {
+		t.Fatal("first run should show the settings hint chip")
+	}
+	next, _ = m.Update(key(tea.KeyCtrlE))
+	m = next.(Model)
+	next, _ = m.Update(key(tea.KeyEsc))
+	m = next.(Model)
+	if containsPlain(m.View(), " ^e settings ") {
+		t.Error("hint chip should disappear after settings were opened")
 	}
 }
 

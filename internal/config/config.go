@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -39,8 +41,16 @@ type ProjectConfig struct {
 	Pinned bool     `toml:"pinned"`
 }
 
+// UI holds picker appearance settings.
+type UI struct {
+	// Icons selects the glyph set: "nerd" (default, needs a Nerd Font —
+	// https://www.nerdfonts.com) or "plain" (universal Unicode).
+	Icons string `toml:"icons"`
+}
+
 type Config struct {
 	Defaults Defaults                 `toml:"defaults"`
+	UI       UI                       `toml:"ui"`
 	Ignore   []string                 `toml:"ignore"`
 	Projects map[string]ProjectConfig `toml:"projects"`
 
@@ -50,8 +60,12 @@ type Config struct {
 	dir   string
 }
 
+// statefile holds runtime state that is not configuration: pin toggles and
+// the first-run hint marker. Settings changed in the TUI are written into
+// config.toml itself (surgically, preserving comments and formatting).
 type statefile struct {
-	Pinned map[string]bool `json:"pinned"`
+	Pinned   map[string]bool `json:"pinned"`
+	HintSeen bool            `json:"seen_settings_hint,omitempty"`
 }
 
 // Dir follows the XDG convention (~/.config/psw) on every platform, matching
@@ -97,6 +111,9 @@ func Load() (*Config, error) {
 	if cfg.Defaults.Command == "" {
 		cfg.Defaults.Command = "p"
 	}
+	if cfg.UI.Icons != "plain" {
+		cfg.UI.Icons = "nerd"
+	}
 	if cfg.Projects == nil {
 		cfg.Projects = map[string]ProjectConfig{}
 	}
@@ -141,6 +158,99 @@ func (c *Config) Pinned(path string) bool {
 func (c *Config) SetPinned(path string, pinned bool) error {
 	c.state.Pinned[path] = pinned
 	return c.saveState()
+}
+
+// SetDefaultAction writes the Enter action into config.toml and applies it.
+func (c *Config) SetDefaultAction(action string) error {
+	if err := c.editConfigKey("defaults", "action", action); err != nil {
+		return err
+	}
+	c.Defaults.Action = action
+	return nil
+}
+
+// SetIcons writes the icon set into config.toml and applies it.
+func (c *Config) SetIcons(icons string) error {
+	if err := c.editConfigKey("ui", "icons", icons); err != nil {
+		return err
+	}
+	c.UI.Icons = icons
+	return nil
+}
+
+// editConfigKey surgically sets `key = "value"` inside [section] of
+// config.toml, leaving every other byte — comments, formatting, other
+// sections — untouched. A missing file, section, or key is created. The
+// result must survive a TOML parse or nothing is written; the write itself
+// is atomic (temp file + rename).
+func (c *Config) editConfigKey(section, key, value string) error {
+	path := filepath.Join(c.dir, "config.toml")
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	var lines []string
+	if len(data) > 0 {
+		lines = strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	}
+	keyRe := regexp.MustCompile(`^(\s*` + regexp.QuoteMeta(key) + `\s*=\s*)("[^"]*"|'[^']*')(\s*(#.*)?)\s*$`)
+	current, sectionAt, done := "", -1, false
+	for i, line := range lines {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "[") {
+			if end := strings.Index(t, "]"); end > 0 {
+				current = strings.TrimPrefix(t[1:end], "[") // tolerate [[array]] headers
+				if current == section {
+					sectionAt = i
+				}
+			}
+			continue
+		}
+		if done || current != section {
+			continue
+		}
+		if m := keyRe.FindStringSubmatch(line); m != nil {
+			lines[i] = m[1] + fmt.Sprintf("%q", value) + m[3]
+			done = true
+		}
+	}
+	if !done {
+		entry := fmt.Sprintf("%s = %q", key, value)
+		if sectionAt >= 0 {
+			rest := append([]string{entry}, lines[sectionAt+1:]...)
+			lines = append(lines[:sectionAt+1], rest...)
+		} else {
+			if len(lines) > 0 {
+				lines = append(lines, "")
+			}
+			lines = append(lines, "["+section+"]", entry)
+		}
+	}
+	out := strings.Join(lines, "\n") + "\n"
+	if _, err := toml.Decode(out, &Config{}); err != nil {
+		return fmt.Errorf("refusing to write config.toml that would not parse: %w", err)
+	}
+	if err := os.MkdirAll(c.dir, 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(out), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// SettingsHintSeen reports whether the first-run "^e settings" hint has been
+// dismissed (by opening settings or completing a pick).
+func (c *Config) SettingsHintSeen() bool { return c.state.HintSeen }
+
+// MarkSettingsHintSeen dismisses the first-run hint permanently.
+func (c *Config) MarkSettingsHintSeen() {
+	if c.state.HintSeen {
+		return
+	}
+	c.state.HintSeen = true
+	_ = c.saveState()
 }
 
 // ActionFor returns the Enter-key action for a project.

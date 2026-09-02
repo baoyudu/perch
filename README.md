@@ -45,18 +45,25 @@ Then type **`p`** in any terminal.
 | Key | Action |
 |---|---|
 | type | fuzzy-filter projects (name and path) |
+| `Tab` / `Shift+Tab` | cycle source scope: all → claude → codex |
 | `Enter` | project's default action (global default: just `cd`) |
 | `^O` | `cd` only |
 | `^A` | `cd` + launch **claude** |
 | `^X` | `cd` + launch **codex** |
 | `^R` | `cd` + **resume** the last session (`claude --continue` / `codex resume <id>`) |
 | `^S` | pin/unpin project to the top |
+| `^E` | settings page (default action, icon set) |
+| `→` | focus the preview pane: `↑↓`/`jk` scroll, `←`/`Esc` back |
 | `↑↓` `^P^N` `^K^J` | navigate |
 | `Esc` / `^C` | cancel |
 
 The list shows each project's last-used agent, relative time, git branch and
 dirty-file count; the preview pane shows the tail of your last conversation so
-you remember where you left off.
+you remember where you left off. `Tab` narrows the list to projects with
+claude or codex sessions — the panel title changes color to show the scope.
+
+Icons default to [Nerd Font](https://www.nerdfonts.com) glyphs; if your
+terminal font isn't patched, set `icons = "plain"` under `[ui]`.
 
 ## Configuration
 
@@ -72,14 +79,20 @@ command = "p"          # name of the shell function
 claude_args = []       # extra args whenever claude is launched
 codex_args = []        # extra args whenever codex is launched
 
+[ui]
+icons = "nerd"         # "nerd" (default, needs a Nerd Font) | "plain"
+
 [projects."/Users/you/Code/my-app"]
 action = "claude"      # Enter here means: cd + claude
 args = ["--dangerously-skip-permissions"]
 pinned = true
 ```
 
-Pins toggled with `^S` are stored in `~/.config/psw/state.json` and override
-the TOML value, so your hand-written config is never rewritten.
+You rarely need to edit the file: `^E` inside the picker opens a settings
+page for the common options. It edits `config.toml` in place, touching only
+the keys it owns — comments, formatting, and everything else in the file are
+preserved. Pins toggled with `^S` are runtime state and live in
+`~/.config/psw/state.json`.
 
 ## Commands
 

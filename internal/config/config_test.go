@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -94,5 +95,89 @@ pinned = true
 	}
 	if !cfg2.Pinned("/work/other") {
 		t.Error("state pin should persist across loads")
+	}
+}
+
+func TestSetDefaultActionEditsTOMLSurgically(t *testing.T) {
+	dir := setupDir(t)
+	orig := `# psw config — hand-written, do not reorder
+ignore = ["**/x/**"]
+
+[defaults]
+action = "cd"   # what enter does
+command = "p"
+
+[projects."/w/app"]
+action = "codex"
+`
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte(orig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SetDefaultAction("claude"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"# psw config — hand-written, do not reorder", // leading comment intact
+		`action = "claude"   # what enter does`,       // value swapped, inline comment kept
+		`command = "p"`,                               // sibling key untouched
+		`[projects."/w/app"]`,                         // other sections untouched
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("config.toml missing %q after edit:\n%s", want, got)
+		}
+	}
+	if strings.Count(got, `"codex"`) != 1 {
+		t.Errorf("per-project action must not be rewritten:\n%s", got)
+	}
+	reloaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Defaults.Action != ActionClaude {
+		t.Errorf("reload: default action = %q", reloaded.Defaults.Action)
+	}
+	if reloaded.ActionFor("/w/app") != ActionCodex {
+		t.Errorf("reload: project action = %q", reloaded.ActionFor("/w/app"))
+	}
+}
+
+func TestEditConfigKeyCreatesFileAndSections(t *testing.T) {
+	dir := setupDir(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SetIcons("plain"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SetDefaultAction("codex"); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SetIcons("nerd"); err != nil { // update the key it created
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if strings.Count(got, "icons") != 1 || !strings.Contains(got, `icons = "nerd"`) {
+		t.Errorf("icons key should exist exactly once with the new value:\n%s", got)
+	}
+	reloaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.UI.Icons != "nerd" || reloaded.Defaults.Action != ActionCodex {
+		t.Errorf("reload: icons=%q action=%q", reloaded.UI.Icons, reloaded.Defaults.Action)
 	}
 }

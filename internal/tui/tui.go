@@ -61,24 +61,83 @@ var (
 	onAccent = lipgloss.AdaptiveColor{Light: "#eff1f5", Dark: "#1e1e2e"} // text on accent chips
 	selBg    = surfaceC
 
-	plain     = lipgloss.NewStyle()
-	dim       = lipgloss.NewStyle().Foreground(dimC)
-	accent    = lipgloss.NewStyle().Foreground(accentC)
-	claudeSt  = lipgloss.NewStyle().Foreground(claudeC)
-	codexSt   = lipgloss.NewStyle().Foreground(codexC)
-	pinSt     = lipgloss.NewStyle().Foreground(pinC)
-	gitSt     = lipgloss.NewStyle().Foreground(gitC)
-	dirtySt   = lipgloss.NewStyle().Foreground(dirtyC)
-	nameSt    = lipgloss.NewStyle().Bold(true)
-	nameSelSt = lipgloss.NewStyle().Bold(true).Foreground(accentC)
-	matchSt   = lipgloss.NewStyle().Foreground(accentC).Bold(true).Underline(true)
-	borderSt  = lipgloss.NewStyle().Foreground(borderC)
-	thumbSt   = lipgloss.NewStyle().Foreground(accentC)
-	labelSt   = lipgloss.NewStyle().Foreground(dimC).Italic(true)
-	titleOn   = lipgloss.NewStyle().Background(accentC).Foreground(onAccent).Bold(true)
-	titleOff  = lipgloss.NewStyle().Background(surfaceC).Foreground(dimC).Bold(true)
-	chipSt    = lipgloss.NewStyle().Background(surfaceC).Foreground(dimC)
-	keySt     = lipgloss.NewStyle().Background(surfaceC).Foreground(strongC).Bold(true)
+	plain       = lipgloss.NewStyle()
+	dim         = lipgloss.NewStyle().Foreground(dimC)
+	accent      = lipgloss.NewStyle().Foreground(accentC)
+	claudeSt    = lipgloss.NewStyle().Foreground(claudeC)
+	codexSt     = lipgloss.NewStyle().Foreground(codexC)
+	pinSt       = lipgloss.NewStyle().Foreground(pinC)
+	gitSt       = lipgloss.NewStyle().Foreground(gitC)
+	dirtySt     = lipgloss.NewStyle().Foreground(dirtyC)
+	nameSt      = lipgloss.NewStyle().Bold(true)
+	nameSelSt   = lipgloss.NewStyle().Bold(true).Foreground(accentC)
+	matchSt     = lipgloss.NewStyle().Foreground(accentC).Bold(true).Underline(true)
+	borderSt    = lipgloss.NewStyle().Foreground(borderC)
+	thumbSt     = lipgloss.NewStyle().Foreground(accentC)
+	labelSt     = lipgloss.NewStyle().Foreground(dimC).Italic(true)
+	titleOn     = lipgloss.NewStyle().Background(accentC).Foreground(onAccent).Bold(true)
+	titleClaude = lipgloss.NewStyle().Background(claudeC).Foreground(onAccent).Bold(true)
+	titleCodex  = lipgloss.NewStyle().Background(codexC).Foreground(onAccent).Bold(true)
+	titleOff    = lipgloss.NewStyle().Background(surfaceC).Foreground(dimC).Bold(true)
+	chipSt      = lipgloss.NewStyle().Background(surfaceC).Foreground(dimC)
+	keySt       = lipgloss.NewStyle().Background(surfaceC).Foreground(strongC).Bold(true)
+)
+
+// iconSet holds the glyphs the picker draws. Prefix glyphs are exactly two
+// display cells (icon + space) in both sets so row layout never shifts.
+// Nerd glyphs stay in the BMP private-use area, which every measurer and
+// terminal agrees is one cell wide.
+type iconSet struct {
+	prompt   string // filter input prompt
+	folder   string // unpinned row marker
+	pin      string // pinned row marker
+	claude   string // claude badge prefix
+	codex    string // codex badge prefix
+	branch   string // git branch prefix
+	preview  string // preview panel title
+	settings string // settings panel title
+}
+
+var nerdIcons = iconSet{
+	prompt:   " ", //  search
+	folder:   " ", //  folder
+	pin:      " ", //  pin
+	claude:   " ", //  asterisk
+	codex:    " ", //  diamond
+	branch:   " ", //  powerline branch
+	preview:  " Preview",
+	settings: " Settings",
+}
+
+var plainIcons = iconSet{
+	prompt:   "❯ ",
+	folder:   "  ",
+	pin:      "★ ",
+	claude:   "✳ ",
+	codex:    "◆ ",
+	branch:   "⎇ ",
+	preview:  "Preview",
+	settings: "Settings",
+}
+
+// scope narrows the list to projects that have sessions from one agent.
+type scope int
+
+const (
+	scopeAll scope = iota
+	scopeClaude
+	scopeCodex
+	scopeCount
+)
+
+// mode is which pane owns the keyboard: the list (default), the preview
+// (entered with →, scrollable), or the settings page (^e).
+type mode int
+
+const (
+	modeList mode = iota
+	modePreview
+	modeSettings
 )
 
 // rowMatch records which runes of a row matched the filter, for highlighting.
@@ -88,25 +147,34 @@ type rowMatch struct {
 }
 
 type Model struct {
-	cfg        *config.Config
-	all        []index.Project
-	filtered   []int      // indices into all, in display order
-	matchFor   []rowMatch // aligned with filtered
-	cursor     int        // position within filtered
-	offset     int        // first visible row
-	input      textinput.Model
-	width      int
-	height     int
-	git        map[string]gitinfo.Status
-	previews   map[string]preview.Snippet
-	previewReq map[string]bool
-	result     *Result
-	now        time.Time
+	cfg         *config.Config
+	all         []index.Project
+	filtered    []int      // indices into all, in display order
+	matchFor    []rowMatch // aligned with filtered
+	cursor      int        // position within filtered
+	offset      int        // first visible row
+	scope       scope      // agent filter cycled with tab
+	mode        mode
+	settingsRow int // cursor within the settings page
+	previewOff  int // scroll offset within the preview pane
+	ic          iconSet
+	input       textinput.Model
+	width       int
+	height      int
+	git         map[string]gitinfo.Status
+	previews    map[string]preview.Snippet
+	previewReq  map[string]bool
+	result      *Result
+	now         time.Time
 }
 
 func New(cfg *config.Config, projects []index.Project) Model {
+	ic := nerdIcons
+	if cfg.UI.Icons == "plain" {
+		ic = plainIcons
+	}
 	ti := textinput.New()
-	ti.Prompt = "❯ "
+	ti.Prompt = ic.prompt
 	ti.PromptStyle = accent
 	ti.Placeholder = "type to filter"
 	ti.PlaceholderStyle = dim
@@ -114,6 +182,7 @@ func New(cfg *config.Config, projects []index.Project) Model {
 	m := Model{
 		cfg:        cfg,
 		all:        projects,
+		ic:         ic,
 		input:      ti,
 		width:      80,
 		height:     24,
@@ -149,6 +218,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.height = msg.Height
 		}
 		m.input.Width = min(48, max(16, m.width/3))
+		if m.mode == modePreview && !m.previewVisible() {
+			m.mode = modeList
+			m.input.Focus()
+		}
 		m.clampScroll()
 		return m, nil
 	case gitMsg:
@@ -160,9 +233,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
+		if m.mode == modeSettings {
+			return m.updateSettings(msg)
+		}
+		if m.mode == modePreview {
+			if next, cmd, handled := m.updatePreview(msg); handled {
+				return next, cmd
+			}
+		}
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
+		case tea.KeyCtrlE:
+			return m.openSettings()
+		case tea.KeyRight:
+			// Focus the preview only when the input cursor is already at the
+			// end; otherwise → keeps editing the filter text.
+			if m.previewVisible() && m.input.Position() >= len([]rune(m.input.Value())) {
+				m.mode = modePreview
+				m.input.Blur()
+				return m, nil
+			}
 		case tea.KeyEnter:
 			return m.choose(Action(m.cfg.ActionFor(m.selectedPath())))
 		case tea.KeyCtrlO:
@@ -175,6 +266,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.choose(ActResume)
 		case tea.KeyCtrlS:
 			return m.togglePin()
+		case tea.KeyTab:
+			return m.cycleScope(1)
+		case tea.KeyShiftTab:
+			return m.cycleScope(-1)
 		case tea.KeyUp, tea.KeyCtrlP, tea.KeyCtrlK:
 			return m.move(-1)
 		case tea.KeyDown, tea.KeyCtrlN, tea.KeyCtrlJ:
@@ -203,13 +298,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.mode == modeSettings {
+		return m, nil
+	}
+	inPreview := m.previewVisible() && msg.X > m.listWidth()
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
+		if inPreview {
+			m.scrollPreview(-3)
+			return m, nil
+		}
 		return m.move(-3)
 	case tea.MouseButtonWheelDown:
+		if inPreview {
+			m.scrollPreview(3)
+			return m, nil
+		}
 		return m.move(3)
 	case tea.MouseButtonLeft:
 		if msg.Action != tea.MouseActionPress {
+			return m, nil
+		}
+		if inPreview {
+			m.mode = modePreview
+			m.input.Blur()
 			return m, nil
 		}
 		// Rows start below the header (y=0) and panel top border (y=1).
@@ -221,7 +333,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if idx >= len(m.filtered) {
 			return m, nil
 		}
+		m.mode = modeList
+		m.input.Focus()
 		m.cursor = idx
+		m.previewOff = 0
 		m.clampScroll()
 		return m, m.requestPreview()
 	}
@@ -239,6 +354,7 @@ func (m Model) move(delta int) (tea.Model, tea.Cmd) {
 	if m.cursor >= len(m.filtered) {
 		m.cursor = len(m.filtered) - 1
 	}
+	m.previewOff = 0
 	m.clampScroll()
 	return m, m.requestPreview()
 }
@@ -278,6 +394,7 @@ func (m Model) choose(act Action) (tea.Model, tea.Cmd) {
 	if act == ActResume && p.LastAgent == "" {
 		act = ActCD // nothing to resume
 	}
+	m.cfg.MarkSettingsHintSeen()
 	m.result = &Result{Project: *p, Action: act}
 	return m, tea.Quit
 }
@@ -312,14 +429,164 @@ func (m Model) togglePin() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// refilter recomputes the visible list from the query, preserving base order
-// (pinned first, then recency) and ranking better fuzzy matches higher.
+// openSettings switches to the settings page and dismisses the first-run hint.
+func (m Model) openSettings() (tea.Model, tea.Cmd) {
+	m.mode = modeSettings
+	m.input.Blur()
+	m.cfg.MarkSettingsHintSeen()
+	return m, nil
+}
+
+// settingOptions lists the cycleable values per settings row.
+var settingOptions = [][]string{
+	{config.ActionCD, config.ActionClaude, config.ActionCodex}, // default action
+	{"nerd", "plain"}, // icons
+}
+
+func (m Model) settingValue(row int) string {
+	if row == 0 {
+		return m.cfg.Defaults.Action
+	}
+	return m.cfg.UI.Icons
+}
+
+// cycleSetting steps the selected setting's value and persists it.
+func (m Model) cycleSetting(delta int) (tea.Model, tea.Cmd) {
+	opts := settingOptions[m.settingsRow]
+	cur := 0
+	for i, v := range opts {
+		if v == m.settingValue(m.settingsRow) {
+			cur = i
+			break
+		}
+	}
+	next := opts[(cur+delta+len(opts))%len(opts)]
+	switch m.settingsRow {
+	case 0:
+		_ = m.cfg.SetDefaultAction(next)
+	case 1:
+		_ = m.cfg.SetIcons(next)
+		m.ic = nerdIcons
+		if next == "plain" {
+			m.ic = plainIcons
+		}
+		m.input.Prompt = m.ic.prompt
+	}
+	return m, nil
+}
+
+func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyCtrlC:
+		return m, tea.Quit
+	case tea.KeyEsc, tea.KeyCtrlE:
+		m.mode = modeList
+		m.input.Focus()
+		return m, nil
+	case tea.KeyUp, tea.KeyCtrlP, tea.KeyCtrlK:
+		m.settingsRow = max(0, m.settingsRow-1)
+		return m, nil
+	case tea.KeyDown, tea.KeyCtrlN, tea.KeyCtrlJ:
+		m.settingsRow = min(len(settingOptions)-1, m.settingsRow+1)
+		return m, nil
+	case tea.KeyLeft:
+		return m.cycleSetting(-1)
+	case tea.KeyRight, tea.KeyEnter, tea.KeySpace:
+		return m.cycleSetting(1)
+	case tea.KeyRunes:
+		switch string(msg.Runes) {
+		case "k":
+			m.settingsRow = max(0, m.settingsRow-1)
+		case "j":
+			m.settingsRow = min(len(settingOptions)-1, m.settingsRow+1)
+		case "h":
+			return m.cycleSetting(-1)
+		case "l", " ":
+			return m.cycleSetting(1)
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+// updatePreview handles keys owned by the focused preview pane; unhandled
+// keys (enter, ctrl-actions, tab) fall through to the global bindings.
+func (m Model) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	back := func() (tea.Model, tea.Cmd, bool) {
+		m.mode = modeList
+		m.input.Focus()
+		return m, nil, true
+	}
+	switch msg.Type {
+	case tea.KeyEsc, tea.KeyLeft:
+		return back()
+	case tea.KeyUp:
+		m.scrollPreview(-1)
+		return m, nil, true
+	case tea.KeyDown:
+		m.scrollPreview(1)
+		return m, nil, true
+	case tea.KeyPgUp:
+		m.scrollPreview(-m.listHeight())
+		return m, nil, true
+	case tea.KeyPgDown:
+		m.scrollPreview(m.listHeight())
+		return m, nil, true
+	case tea.KeyRunes:
+		switch string(msg.Runes) {
+		case "k":
+			m.scrollPreview(-1)
+		case "j":
+			m.scrollPreview(1)
+		case "g":
+			m.previewOff = 0
+		case "G":
+			m.scrollPreview(1 << 20)
+		case "h", "q":
+			return back()
+		}
+		return m, nil, true // swallow runes: they are not filter input here
+	}
+	return m, nil, false
+}
+
+// scrollPreview moves the preview offset, clamped to the rendered content.
+func (m *Model) scrollPreview(delta int) {
+	lines := m.renderPreviewLines(m.previewWidth() - 4)
+	maxOff := max(0, len(lines)-m.listHeight())
+	m.previewOff = min(max(0, m.previewOff+delta), maxOff)
+}
+
+// cycleScope steps the agent filter (all → claude → codex) and refilters.
+func (m Model) cycleScope(delta int) (tea.Model, tea.Cmd) {
+	m.scope = scope((int(m.scope) + delta + int(scopeCount)) % int(scopeCount))
+	m.refilter()
+	return m, m.requestPreview()
+}
+
+// inScope reports whether a project has sessions from the scoped agent.
+func (m Model) inScope(p index.Project) bool {
+	switch m.scope {
+	case scopeClaude:
+		return !p.ClaudeLast.IsZero()
+	case scopeCodex:
+		return !p.CodexLast.IsZero()
+	}
+	return true
+}
+
+// refilter recomputes the visible list from the scope and query, preserving
+// base order (pinned first, then recency) and ranking better fuzzy matches
+// higher.
 func (m *Model) refilter() {
 	query := strings.ToLower(strings.TrimSpace(m.input.Value()))
 	m.filtered = m.filtered[:0]
 	m.matchFor = m.matchFor[:0]
 	if query == "" {
 		for i := range m.all {
+			if !m.inScope(m.all[i]) {
+				continue
+			}
 			m.filtered = append(m.filtered, i)
 			m.matchFor = append(m.matchFor, rowMatch{})
 		}
@@ -330,6 +597,9 @@ func (m *Model) refilter() {
 		}
 		var hits []scored
 		for i, p := range m.all {
+			if !m.inScope(p) {
+				continue
+			}
 			if score, rm, ok := matchProject(query, p); ok {
 				hits = append(hits, scored{i, score, rm})
 			}
@@ -347,6 +617,7 @@ func (m *Model) refilter() {
 		m.cursor = 0
 	}
 	m.offset = 0
+	m.previewOff = 0
 	m.clampScroll()
 }
 
@@ -450,10 +721,26 @@ func (m Model) View() string {
 		return ""
 	}
 	h := m.listHeight()
-	thumbStart, thumbLen := m.scrollThumb(h)
-	list := panel("Projects", true, m.renderRows(h), m.listWidth(), h, thumbStart, thumbLen)
+	if m.mode == modeSettings {
+		body := panel(m.ic.settings, titleOn, m.renderSettings(), m.width, h, 0, 0)
+		return m.renderHeader() + "\n" + strings.Join(body, "\n") + "\n" + m.renderHelp()
+	}
+	thumbStart, thumbLen := thumbFor(m.offset, h, len(m.filtered))
+	title, titleSt := m.listTitle()
+	if m.mode == modePreview {
+		titleSt = titleOff
+	}
+	list := panel(title, titleSt, m.renderRows(h), m.listWidth(), h, thumbStart, thumbLen)
 	if m.previewVisible() {
-		prev := panel("Preview", false, m.renderPreviewLines(m.previewWidth()-4, h), m.previewWidth(), h, 0, 0)
+		plines := m.renderPreviewLines(m.previewWidth() - 4)
+		off := min(m.previewOff, max(0, len(plines)-h))
+		pThumbStart, pThumbLen := 0, 0
+		pTitle := titleOff
+		if m.mode == modePreview {
+			pTitle = titleOn
+			pThumbStart, pThumbLen = thumbFor(off, h, len(plines))
+		}
+		prev := panel(m.ic.preview, pTitle, plines[off:min(len(plines), off+h)], m.previewWidth(), h, pThumbStart, pThumbLen)
 		for i := range list {
 			list[i] += " " + prev[i]
 		}
@@ -464,6 +751,9 @@ func (m Model) View() string {
 func (m Model) renderHeader() string {
 	left := " " + m.input.View()
 	counter := chipSt.Render(fmt.Sprintf(" %d/%d ", len(m.filtered), len(m.all)))
+	if !m.cfg.SettingsHintSeen() && m.mode != modeSettings {
+		counter = keySt.Render(" ^e settings ") + " " + counter
+	}
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(counter) - 2
 	if gap < 1 {
 		gap = 1
@@ -471,16 +761,24 @@ func (m Model) renderHeader() string {
 	return left + strings.Repeat(" ", gap) + counter
 }
 
-// panel wraps content lines in a rounded border with a chip-style title
-// (accent for the active panel). When thumbLen > 0, the right border doubles
-// as a scrollbar: rows within [thumbStart, thumbStart+thumbLen) get a thumb.
-// Content lines must already be at most w-4 display cells wide.
-func panel(title string, active bool, content []string, w, h, thumbStart, thumbLen int) []string {
-	inner := max(2, w-2)
-	ts := titleOff
-	if active {
-		ts = titleOn
+// listTitle names the list panel after the active scope, tinting the chip
+// with the scoped agent's color.
+func (m Model) listTitle() (string, lipgloss.Style) {
+	switch m.scope {
+	case scopeClaude:
+		return m.ic.claude + "Claude", titleClaude
+	case scopeCodex:
+		return m.ic.codex + "Codex", titleCodex
 	}
+	return "Projects", titleOn
+}
+
+// panel wraps content lines in a rounded border with a chip-style title.
+// When thumbLen > 0, the right border doubles as a scrollbar: rows within
+// [thumbStart, thumbStart+thumbLen) get a thumb.
+// Content lines must already be at most w-4 display cells wide.
+func panel(title string, ts lipgloss.Style, content []string, w, h, thumbStart, thumbLen int) []string {
+	inner := max(2, w-2)
 	t := ts.Render(" " + title + " ")
 	fill := max(0, inner-1-lipgloss.Width(t))
 	out := make([]string, 0, h+2)
@@ -505,16 +803,15 @@ func panel(title string, active bool, content []string, w, h, thumbStart, thumbL
 	return out
 }
 
-// scrollThumb maps the visible window onto a thumb on the panel's right
-// border; zero length means everything fits and no thumb is drawn.
-func (m Model) scrollThumb(h int) (start, length int) {
-	total := len(m.filtered)
+// thumbFor maps a scroll window onto a thumb on a panel's right border;
+// zero length means everything fits and no thumb is drawn.
+func thumbFor(offset, h, total int) (start, length int) {
 	if h <= 0 || total <= h {
 		return 0, 0
 	}
 	length = max(1, h*h/total)
 	maxOff := total - h
-	start = (m.offset*(h-length) + maxOff/2) / maxOff
+	start = (offset*(h-length) + maxOff/2) / maxOff
 	return start, length
 }
 
@@ -522,9 +819,18 @@ func (m Model) renderRows(h int) []string {
 	cw := max(10, m.listWidth()-4)
 	out := make([]string, 0, h)
 	if len(m.filtered) == 0 {
+		what, hint := "nothing matches", "ctrl+u clears the filter"
+		if m.input.Value() == "" {
+			switch m.scope {
+			case scopeClaude:
+				what, hint = "no claude projects", "tab switches scope"
+			case scopeCodex:
+				what, hint = "no codex projects", "tab switches scope"
+			}
+		}
 		out = append(out, "",
-			dim.Render("  ◌  nothing matches"),
-			dim.Render("     ctrl+u clears the filter"))
+			dim.Render("  ◌  "+what),
+			dim.Render("     "+hint))
 		return out
 	}
 	end := min(m.offset+h, len(m.filtered))
@@ -558,9 +864,9 @@ func (m Model) renderRow(row int, selected bool, cw int) string {
 		b.WriteString(seg(plain).Render("  "))
 	}
 	if p.Pinned {
-		b.WriteString(seg(pinSt).Render("★ "))
+		b.WriteString(seg(pinSt).Render(m.ic.pin))
 	} else {
-		b.WriteString(seg(plain).Render("  "))
+		b.WriteString(seg(dim).Render(m.ic.folder))
 	}
 
 	namePos := match.positions
@@ -578,9 +884,9 @@ func (m Model) renderRow(row int, selected bool, cw int) string {
 	if showBadge {
 		switch p.LastAgent {
 		case index.AgentClaude:
-			b.WriteString(seg(claudeSt).Render("✳ claude"))
+			b.WriteString(seg(claudeSt).Render(m.ic.claude + "claude"))
 		case index.AgentCodex:
-			b.WriteString(seg(codexSt).Render("◆ codex "))
+			b.WriteString(seg(codexSt).Render(m.ic.codex + "codex "))
 		default:
 			b.WriteString(seg(plain).Render("        "))
 		}
@@ -591,7 +897,7 @@ func (m Model) renderRow(row int, selected bool, cw int) string {
 	if showGit {
 		branch, dirty := "", ""
 		if st, ok := m.git[p.Path]; ok && st.IsRepo {
-			branch = "⎇ " + truncate(st.Branch, 9)
+			branch = m.ic.branch + truncate(st.Branch, 9)
 			if st.Dirty > 0 {
 				dirty = fmt.Sprintf(" +%d", min(st.Dirty, 99))
 			}
@@ -668,7 +974,9 @@ func highlight(s string, positions []int, base, hl lipgloss.Style, maxW int) str
 	return b.String()
 }
 
-func (m Model) renderPreviewLines(cw, h int) []string {
+// renderPreviewLines renders the full preview content (unclipped); View
+// slices it by the scroll offset.
+func (m Model) renderPreviewLines(cw int) []string {
 	p := m.selectedProject()
 	if p == nil || cw < 10 {
 		return nil
@@ -679,7 +987,7 @@ func (m Model) renderPreviewLines(cw, h int) []string {
 
 	title := truncate(p.Name, cw-2)
 	if p.Pinned {
-		title = pinSt.Render("★ ") + nameSt.Render(title)
+		title = pinSt.Render(m.ic.pin) + nameSt.Render(title)
 	} else {
 		title = nameSt.Render(title)
 	}
@@ -689,16 +997,16 @@ func (m Model) renderPreviewLines(cw, h int) []string {
 
 	var usage []string
 	if !p.ClaudeLast.IsZero() {
-		usage = append(usage, claudeSt.Render("✳ claude ")+dim.Render(index.RelTime(p.ClaudeLast, m.now)+" ago"))
+		usage = append(usage, claudeSt.Render(m.ic.claude+"claude ")+dim.Render(index.RelTime(p.ClaudeLast, m.now)+" ago"))
 	}
 	if !p.CodexLast.IsZero() {
-		usage = append(usage, codexSt.Render("◆ codex ")+dim.Render(index.RelTime(p.CodexLast, m.now)+" ago"))
+		usage = append(usage, codexSt.Render(m.ic.codex+"codex ")+dim.Render(index.RelTime(p.CodexLast, m.now)+" ago"))
 	}
 	if len(usage) > 0 {
 		add(strings.Join(usage, dim.Render("  ·  ")))
 	}
 	if st, ok := m.git[p.Path]; ok && st.IsRepo {
-		line := gitSt.Render("⎇ " + st.Branch)
+		line := gitSt.Render(m.ic.branch + st.Branch)
 		if st.Dirty > 0 {
 			line += dirtySt.Render(fmt.Sprintf("  ● %d uncommitted", st.Dirty))
 		}
@@ -722,10 +1030,44 @@ func (m Model) renderPreviewLines(cw, h int) []string {
 	} else if p.LastAgent != "" {
 		add(labelSt.Render("loading preview…"))
 	}
-	if len(lines) > h {
-		lines = lines[:h]
-	}
 	return lines
+}
+
+// renderSettings lays out the settings page: one row per option with the
+// current value highlighted in a segmented control.
+func (m Model) renderSettings() []string {
+	cw := max(10, m.width-4)
+	labels := []string{"default action", "icons"}
+	notes := []string{
+		"what enter does when a project has no per-project action",
+		"nerd needs a Nerd Font (nerdfonts.com); plain works everywhere",
+	}
+	out := []string{""}
+	for i, label := range labels {
+		marker := "  "
+		if i == m.settingsRow {
+			marker = accent.Render("▌ ")
+		}
+		var cells []string
+		for _, v := range settingOptions[i] {
+			switch {
+			case v == m.settingValue(i) && i == m.settingsRow:
+				cells = append(cells, titleOn.Render(" "+v+" "))
+			case v == m.settingValue(i):
+				cells = append(cells, keySt.Render(" "+v+" "))
+			default:
+				cells = append(cells, dim.Render(" "+v+" "))
+			}
+		}
+		pad := strings.Repeat(" ", max(1, 18-lipgloss.Width(label)))
+		out = append(out, marker+nameSt.Render(label)+pad+strings.Join(cells, " "),
+			dim.Render("                    "+truncate(notes[i], max(0, cw-20))), "")
+	}
+	out = append(out, "",
+		dim.Render("  config   ")+labelSt.Render(truncate(index.TildePath(config.Path()), max(0, cw-11))),
+		dim.Render(truncate("  changes edit just these keys in that file — the rest of it,", cw)),
+		dim.Render(truncate("  comments included, is left byte-for-byte intact", cw)))
+	return out
 }
 
 // actionStyle colors an action hint with the same hue as its agent badge.
@@ -742,9 +1084,20 @@ func actionStyle(action string) lipgloss.Style {
 
 func (m Model) renderHelp() string {
 	type item struct{ key, label string }
-	items := []item{
-		{"enter", "default"}, {"^o", "cd"}, {"^a", "claude"}, {"^x", "codex"},
-		{"^r", "resume"}, {"^s", "pin"}, {"esc", "quit"},
+	var items []item
+	switch m.mode {
+	case modeSettings:
+		items = []item{{"↑↓", "select"}, {"←→", "change"}, {"esc", "back"}}
+	case modePreview:
+		items = []item{
+			{"↑↓", "scroll"}, {"←", "back"}, {"enter", "default"},
+			{"^a", "claude"}, {"^x", "codex"}, {"^r", "resume"},
+		}
+	default:
+		items = []item{
+			{"enter", "default"}, {"tab", "scope"}, {"→", "preview"}, {"^a", "claude"},
+			{"^x", "codex"}, {"^r", "resume"}, {"^s", "pin"}, {"^e", "settings"}, {"esc", "quit"},
+		}
 	}
 	var parts []string
 	for _, it := range items {
