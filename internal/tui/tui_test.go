@@ -166,6 +166,26 @@ func TestScopeCombinesWithQuery(t *testing.T) {
 	}
 }
 
+func TestFirstResizeRequestsPreview(t *testing.T) {
+	m := testModel(t)
+	// Init sees the 80-col default where the preview pane is hidden, so the
+	// first real WindowSizeMsg must request the selected project's preview.
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("first resize with a visible preview should request the preview")
+	}
+	pm, ok := cmd().(previewMsg)
+	if !ok || pm.path != "/w/prior-analyst" {
+		t.Fatalf("expected previewMsg for the selected project, got %#v", pm)
+	}
+	// Dedup: a second resize must not re-request it.
+	_, cmd = m.Update(tea.WindowSizeMsg{Width: 130, Height: 30})
+	if cmd != nil {
+		t.Fatal("already-requested preview should not be requested again")
+	}
+}
+
 func TestRightArrowFocusesPreviewEscReturns(t *testing.T) {
 	m := testModel(t)
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})

@@ -223,7 +223,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.Focus()
 		}
 		m.clampScroll()
-		return m, nil
+		// Init runs before the first real WindowSizeMsg, when the default
+		// 80-col width says "no preview pane" — so the initial selection's
+		// preview must be requested here, once the true size is known.
+		return m, m.requestPreview()
 	case gitMsg:
 		m.git[msg.path] = msg.st
 		return m, nil
