@@ -14,10 +14,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"github.com/baoyudu/psw/internal/config"
-	"github.com/baoyudu/psw/internal/gitinfo"
-	"github.com/baoyudu/psw/internal/index"
-	"github.com/baoyudu/psw/internal/preview"
+	"github.com/baoyudu/perch/internal/config"
+	"github.com/baoyudu/perch/internal/gitinfo"
+	"github.com/baoyudu/perch/internal/index"
+	"github.com/baoyudu/perch/internal/preview"
 )
 
 type Action string
@@ -1161,7 +1161,7 @@ func darkBackground() bool {
 func Run(cfg *config.Config, projects []index.Project) (*Result, error) {
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
-		return nil, fmt.Errorf("psw pick needs an interactive terminal: %w", err)
+		return nil, fmt.Errorf("perch pick needs an interactive terminal: %w", err)
 	}
 	defer tty.Close()
 	// lipgloss's default renderer sniffs os.Stdout for color support, but the

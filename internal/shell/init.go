@@ -1,6 +1,6 @@
 // Package shell emits the wrapper function users eval in their rc file.
 // The wrapper exists because a child process cannot change its parent
-// shell's cwd: psw pick prints "<dir>\n<command>" and the function acts on it.
+// shell's cwd: perch pick prints "<dir>\n<command>" and the function acts on it.
 package shell
 
 import (
@@ -24,11 +24,11 @@ func Init(sh, fn string) (string, error) {
 	}
 }
 
-const posixTemplate = `# psw shell integration — add to your rc file:
-#   eval "$(psw init zsh)"
+const posixTemplate = `# perch shell integration — add to your rc file:
+#   eval "$(perch init zsh)"
 __FN__() {
     local out dir cmd
-    out="$(command psw pick "$@")" || return $?
+    out="$(command perch pick "$@")" || return $?
     [ -z "$out" ] && return 0
     dir="${out%%$'\n'*}"
     cmd="${out#*$'\n'}"
@@ -40,10 +40,10 @@ __FN__() {
 }
 `
 
-const fishTemplate = `# psw shell integration — add to config.fish:
-#   psw init fish | source
+const fishTemplate = `# perch shell integration — add to config.fish:
+#   perch init fish | source
 function __FN__ --description "switch to a recent agent project"
-    set -l out (command psw pick $argv)
+    set -l out (command perch pick $argv)
     or return $status
     if test (count $out) -eq 0
         return 0

@@ -1,14 +1,14 @@
 version: 2
-project_name: psw
+project_name: perch
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: psw
-    main: ./cmd/psw
-    binary: psw
+  - id: perch
+    main: ./cmd/perch
+    binary: perch
     env:
       - CGO_ENABLED=0
     goos:
@@ -22,7 +22,7 @@ builds:
 
 archives:
   - formats: [tar.gz]
-    name_template: "psw_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "perch_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
@@ -37,19 +37,19 @@ changelog:
 
 # Publishes a cask to github.com/baoyudu/homebrew-tap on `goreleaser release`.
 homebrew_casks:
-  - name: psw
+  - name: perch
     repository:
       owner: baoyudu
       name: homebrew-tap
-    homepage: https://github.com/baoyudu/psw
+    homepage: https://github.com/baoyudu/perch
     description: "Jump between recent Claude Code / Codex projects and relaunch your agent"
     caveats: |
       Add to your shell rc file:
-        eval "$(psw init zsh)"    # or bash / fish
+        eval "$(perch init zsh)"    # or bash / fish
       Then run: p
     hooks:
       post:
         install: |
           if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/psw"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/perch"]
           end

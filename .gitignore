@@ -1,4 +1,4 @@
-psw
+/perch
 *.test
 dist/
 .DS_Store

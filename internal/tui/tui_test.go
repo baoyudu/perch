@@ -7,14 +7,14 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/baoyudu/psw/internal/config"
-	"github.com/baoyudu/psw/internal/index"
-	"github.com/baoyudu/psw/internal/preview"
+	"github.com/baoyudu/perch/internal/config"
+	"github.com/baoyudu/perch/internal/index"
+	"github.com/baoyudu/perch/internal/preview"
 )
 
 func testModel(t *testing.T) Model {
 	t.Helper()
-	t.Setenv("PSW_CONFIG_DIR", t.TempDir())
+	t.Setenv("PERCH_CONFIG_DIR", t.TempDir())
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -219,7 +219,7 @@ func TestSettingsCycleAndPersist(t *testing.T) {
 	if m.cfg.Defaults.Action != config.ActionClaude {
 		t.Fatalf("default action = %q, want claude", m.cfg.Defaults.Action)
 	}
-	cfg2, err := config.Load() // same PSW_CONFIG_DIR: reads state.json back
+	cfg2, err := config.Load() // same PERCH_CONFIG_DIR: reads state.json back
 	if err != nil {
 		t.Fatal(err)
 	}

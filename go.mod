@@ -1,4 +1,4 @@
-module github.com/baoyudu/psw
+module github.com/baoyudu/perch
 
 go 1.26.5
 

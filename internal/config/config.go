@@ -1,4 +1,4 @@
-// Package config loads and persists psw configuration and runtime state.
+// Package config loads and persists perch configuration and runtime state.
 package config
 
 import (
@@ -68,9 +68,26 @@ type statefile struct {
 	HintSeen bool            `json:"seen_settings_hint,omitempty"`
 }
 
-// Dir follows the XDG convention (~/.config/psw) on every platform, matching
-// CLI-tool practice rather than macOS's Application Support.
+// Dir follows the XDG convention (~/.config/perch) on every platform,
+// matching CLI-tool practice rather than macOS's Application Support.
+// PSW_CONFIG_DIR is honored for pre-rename setups.
 func Dir() string {
+	if d := os.Getenv("PERCH_CONFIG_DIR"); d != "" {
+		return d
+	}
+	if d := os.Getenv("PSW_CONFIG_DIR"); d != "" {
+		return d
+	}
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, _ := os.UserHomeDir()
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "perch")
+}
+
+// legacyDir is the pre-rename config location (~/.config/psw).
+func legacyDir() string {
 	if d := os.Getenv("PSW_CONFIG_DIR"); d != "" {
 		return d
 	}
@@ -82,9 +99,35 @@ func Dir() string {
 	return filepath.Join(base, "psw")
 }
 
+// migrateLegacy copies config.toml and state.json from the old psw config
+// dir the first time perch runs; the originals are left untouched.
+func migrateLegacy() {
+	newDir, oldDir := Dir(), legacyDir()
+	if newDir == oldDir {
+		return
+	}
+	if _, err := os.Stat(newDir); err == nil {
+		return // perch dir already exists
+	}
+	if _, err := os.Stat(oldDir); err != nil {
+		return // nothing to migrate
+	}
+	if err := os.MkdirAll(newDir, 0o755); err != nil {
+		return
+	}
+	for _, name := range []string{"config.toml", "state.json"} {
+		data, err := os.ReadFile(filepath.Join(oldDir, name))
+		if err != nil {
+			continue
+		}
+		_ = os.WriteFile(filepath.Join(newDir, name), data, 0o644)
+	}
+}
+
 func Path() string { return filepath.Join(Dir(), "config.toml") }
 
 func Load() (*Config, error) {
+	migrateLegacy()
 	cfg := &Config{
 		Defaults: Defaults{Action: ActionCD, Command: "p"},
 		Projects: map[string]ProjectConfig{},

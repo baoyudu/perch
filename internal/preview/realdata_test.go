@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/baoyudu/psw/internal/config"
-	"github.com/baoyudu/psw/internal/index"
+	"github.com/baoyudu/perch/internal/config"
+	"github.com/baoyudu/perch/internal/index"
 )
 
 // TestRealData exercises Load against the local machine's actual history.

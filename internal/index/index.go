@@ -12,8 +12,8 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
-	"github.com/baoyudu/psw/internal/config"
-	"github.com/baoyudu/psw/internal/source"
+	"github.com/baoyudu/perch/internal/config"
+	"github.com/baoyudu/perch/internal/source"
 )
 
 const (
@@ -35,8 +35,12 @@ type Project struct {
 	CodexSessionID    string `json:"-"`
 }
 
-// cacheDir follows XDG (~/.cache/psw) on every platform.
+// cacheDir follows XDG (~/.cache/perch); PSW_CACHE_DIR still works
+// for pre-rename setups.
 func cacheDir() string {
+	if d := os.Getenv("PERCH_CACHE_DIR"); d != "" {
+		return d
+	}
 	if d := os.Getenv("PSW_CACHE_DIR"); d != "" {
 		return d
 	}
@@ -45,7 +49,7 @@ func cacheDir() string {
 		home, _ := os.UserHomeDir()
 		base = filepath.Join(home, ".cache")
 	}
-	return filepath.Join(base, "psw")
+	return filepath.Join(base, "perch")
 }
 
 func loadCodexCache() *source.CodexCache {

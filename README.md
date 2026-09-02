@@ -1,10 +1,10 @@
-# psw — ProjectSwitcher
+# perch — a perch for your agent projects
 
 Jump straight from a fresh terminal into the project you were just working on
 with **Claude Code** or **Codex** — and optionally relaunch the agent, or even
 resume the last conversation.
 
-`psw` needs **zero configuration**: it reads the session history both agents
+`perch` needs **zero configuration**: it reads the session history both agents
 already keep on disk (`~/.claude.json` + `~/.claude/projects`,
 `~/.codex/sessions`), so the moment you install it, every project you've ever
 opened an agent in is one keystroke away.
@@ -25,20 +25,25 @@ opened an agent in is one keystroke away.
 ## Install
 
 ```sh
-brew install --cask baoyudu/tap/psw   # macOS
+brew install --cask baoyudu/tap/perch   # macOS
 # or from source:
-go install github.com/baoyudu/psw/cmd/psw@latest
+go install github.com/baoyudu/perch/cmd/perch@latest
 ```
 
 Add one line to your shell rc file:
 
 ```sh
-eval "$(psw init zsh)"     # ~/.zshrc
-eval "$(psw init bash)"    # ~/.bashrc
-psw init fish | source     # ~/.config/fish/config.fish
+eval "$(perch init zsh)"     # ~/.zshrc
+eval "$(perch init bash)"    # ~/.bashrc
+perch init fish | source     # ~/.config/fish/config.fish
 ```
 
 Then type **`p`** in any terminal.
+
+> **Renamed from `psw`** (≤ v0.4.0): your old `~/.config/psw` is copied to
+> `~/.config/perch` automatically on first run (originals untouched). Just
+> swap the eval line above in your rc file and
+> `brew uninstall --cask psw && brew install --cask baoyudu/tap/perch`.
 
 ## Keys
 
@@ -67,7 +72,7 @@ terminal font isn't patched, set `icons = "plain"` under `[ui]`.
 
 ## Configuration
 
-Optional, at `~/.config/psw/config.toml`:
+Optional, at `~/.config/perch/config.toml`:
 
 ```toml
 # top-level keys must come before any [table]
@@ -92,32 +97,32 @@ You rarely need to edit the file: `^E` inside the picker opens a settings
 page for the common options. It edits `config.toml` in place, touching only
 the keys it owns — comments, formatting, and everything else in the file are
 preserved. Pins toggled with `^S` are runtime state and live in
-`~/.config/psw/state.json`.
+`~/.config/perch/state.json`.
 
 ## Commands
 
 | Command | Purpose |
 |---|---|
-| `psw init <zsh\|bash\|fish>` | print the shell wrapper function |
-| `psw pick` | the interactive picker (called by the wrapper) |
-| `psw list [--json]` | print the merged project list |
-| `psw pin <path>` / `psw unpin <path>` | manage pins from the CLI |
-| `psw doctor` | check data sources, binaries, and shell integration |
+| `perch init <zsh\|bash\|fish>` | print the shell wrapper function |
+| `perch pick` | the interactive picker (called by the wrapper) |
+| `perch list [--json]` | print the merged project list |
+| `perch pin <path>` / `perch unpin <path>` | manage pins from the CLI |
+| `perch doctor` | check data sources, binaries, and shell integration |
 
 ## How it works
 
-A child process can't change its parent shell's directory, so `psw pick`
+A child process can't change its parent shell's directory, so `perch pick`
 renders the TUI on `/dev/tty` and prints two lines to stdout — the chosen
 directory and the command to run (`-` for none). The tiny function from
-`psw init` does the actual `cd` and launch. Codex session metadata is indexed
-incrementally into `~/.cache/psw/` so startup stays instant.
+`perch init` does the actual `cd` and launch. Codex session metadata is indexed
+incrementally into `~/.cache/perch/` so startup stays instant.
 
 ## 中文速览
 
 打开新终端后输入 `p`，即可模糊搜索最近用 Claude Code / Codex 工作过的项目，
 回车直达；`^A`/`^X` 在进入目录的同时启动对应 agent，`^R` 直接续接上次对话。
 无需任何配置——项目列表来自两个工具自己的会话历史。安装后在 `~/.zshrc`
-里加一行 `eval "$(psw init zsh)"` 即可。
+里加一行 `eval "$(perch init zsh)"` 即可。
 
 ## License
 

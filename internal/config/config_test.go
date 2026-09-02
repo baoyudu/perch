@@ -10,7 +10,7 @@ import (
 func setupDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("PSW_CONFIG_DIR", dir)
+	t.Setenv("PERCH_CONFIG_DIR", dir)
 	return dir
 }
 
@@ -179,5 +179,36 @@ func TestEditConfigKeyCreatesFileAndSections(t *testing.T) {
 	}
 	if reloaded.UI.Icons != "nerd" || reloaded.Defaults.Action != ActionCodex {
 		t.Errorf("reload: icons=%q action=%q", reloaded.UI.Icons, reloaded.Defaults.Action)
+	}
+}
+
+func TestMigrateLegacyPswDir(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", base)
+	t.Setenv("PERCH_CONFIG_DIR", "")
+	t.Setenv("PSW_CONFIG_DIR", "")
+	old := filepath.Join(base, "psw")
+	if err := os.MkdirAll(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(old, "config.toml"), []byte("[defaults]\naction = \"codex\"\n"), 0o644)
+	os.WriteFile(filepath.Join(old, "state.json"), []byte(`{"pinned":{"/w/a":true}}`), 0o644)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.Action != ActionCodex {
+		t.Errorf("migrated config should apply, action = %q", cfg.Defaults.Action)
+	}
+	if !cfg.Pinned("/w/a") {
+		t.Error("pins should migrate")
+	}
+	for _, f := range []string{"config.toml", "state.json"} {
+		if _, err := os.Stat(filepath.Join(base, "perch", f)); err != nil {
+			t.Errorf("%s should be copied to the perch dir", f)
+		}
+		if _, err := os.Stat(filepath.Join(old, f)); err != nil {
+			t.Errorf("original %s must stay untouched", f)
+		}
 	}
 }

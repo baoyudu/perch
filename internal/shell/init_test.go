@@ -36,7 +36,7 @@ func TestInit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Init(%s): %v", sh, err)
 		}
-		if !strings.Contains(out, "pj") || !strings.Contains(out, "psw pick") {
+		if !strings.Contains(out, "pj") || !strings.Contains(out, "perch pick") {
 			t.Errorf("Init(%s) missing function name or pick call:\n%s", sh, out)
 		}
 	}

@@ -7,8 +7,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/baoyudu/psw/internal/gitinfo"
-	"github.com/baoyudu/psw/internal/preview"
+	"github.com/baoyudu/perch/internal/gitinfo"
+	"github.com/baoyudu/perch/internal/preview"
 )
 
 // TestBodyLinesFillWidth renders with git + preview data present and asserts

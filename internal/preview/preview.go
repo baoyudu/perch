@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/baoyudu/psw/internal/index"
+	"github.com/baoyudu/perch/internal/index"
 )
 
 type Snippet struct {
