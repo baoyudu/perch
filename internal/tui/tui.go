@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/baoyudu/psw/internal/config"
 	"github.com/baoyudu/psw/internal/gitinfo"
@@ -44,30 +45,40 @@ type previewMsg struct {
 	snip preview.Snippet
 }
 
+// Catppuccin-flavoured palette (Latte for light, Macchiato-ish for dark).
+// Truecolor terminals get these exact values; lipgloss downsamples elsewhere.
 var (
-	accentC = lipgloss.Color("205")
-	claudeC = lipgloss.Color("209")
-	codexC  = lipgloss.Color("75")
-	pinC    = lipgloss.Color("220")
-	gitC    = lipgloss.Color("108")
-	dirtyC  = lipgloss.Color("179")
-	dimC    = lipgloss.AdaptiveColor{Light: "245", Dark: "242"}
-	borderC = lipgloss.AdaptiveColor{Light: "251", Dark: "238"}
-	selBg   = lipgloss.AdaptiveColor{Light: "254", Dark: "236"}
+	accentC  = lipgloss.AdaptiveColor{Light: "#8839ef", Dark: "#cba6f7"} // mauve
+	claudeC  = lipgloss.AdaptiveColor{Light: "#fe640b", Dark: "#fab387"} // peach
+	codexC   = lipgloss.AdaptiveColor{Light: "#1e66f5", Dark: "#89b4fa"} // blue
+	pinC     = lipgloss.AdaptiveColor{Light: "#df8e1d", Dark: "#f9e2af"} // yellow
+	gitC     = lipgloss.AdaptiveColor{Light: "#40a02b", Dark: "#a6e3a1"} // green
+	dirtyC   = lipgloss.AdaptiveColor{Light: "#e64553", Dark: "#eba0ac"} // maroon
+	dimC     = lipgloss.AdaptiveColor{Light: "#9ca0b0", Dark: "#6c7086"}
+	borderC  = lipgloss.AdaptiveColor{Light: "#ccd0da", Dark: "#45475a"}
+	surfaceC = lipgloss.AdaptiveColor{Light: "#e6e9ef", Dark: "#313244"} // chips + selection band
+	strongC  = lipgloss.AdaptiveColor{Light: "#4c4f69", Dark: "#cdd6f4"}
+	onAccent = lipgloss.AdaptiveColor{Light: "#eff1f5", Dark: "#1e1e2e"} // text on accent chips
+	selBg    = surfaceC
 
-	plain    = lipgloss.NewStyle()
-	dim      = lipgloss.NewStyle().Foreground(dimC)
-	accent   = lipgloss.NewStyle().Foreground(accentC)
-	claudeSt = lipgloss.NewStyle().Foreground(claudeC)
-	codexSt  = lipgloss.NewStyle().Foreground(codexC)
-	pinSt    = lipgloss.NewStyle().Foreground(pinC)
-	gitSt    = lipgloss.NewStyle().Foreground(gitC)
-	dirtySt  = lipgloss.NewStyle().Foreground(dirtyC)
-	nameSt   = lipgloss.NewStyle().Bold(true)
-	matchSt  = lipgloss.NewStyle().Foreground(accentC).Bold(true).Underline(true)
-	borderSt = lipgloss.NewStyle().Foreground(borderC)
-	titleSt  = lipgloss.NewStyle().Foreground(dimC).Bold(true)
-	helpKey  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "240", Dark: "250"}).Bold(true)
+	plain     = lipgloss.NewStyle()
+	dim       = lipgloss.NewStyle().Foreground(dimC)
+	accent    = lipgloss.NewStyle().Foreground(accentC)
+	claudeSt  = lipgloss.NewStyle().Foreground(claudeC)
+	codexSt   = lipgloss.NewStyle().Foreground(codexC)
+	pinSt     = lipgloss.NewStyle().Foreground(pinC)
+	gitSt     = lipgloss.NewStyle().Foreground(gitC)
+	dirtySt   = lipgloss.NewStyle().Foreground(dirtyC)
+	nameSt    = lipgloss.NewStyle().Bold(true)
+	nameSelSt = lipgloss.NewStyle().Bold(true).Foreground(accentC)
+	matchSt   = lipgloss.NewStyle().Foreground(accentC).Bold(true).Underline(true)
+	borderSt  = lipgloss.NewStyle().Foreground(borderC)
+	thumbSt   = lipgloss.NewStyle().Foreground(accentC)
+	labelSt   = lipgloss.NewStyle().Foreground(dimC).Italic(true)
+	titleOn   = lipgloss.NewStyle().Background(accentC).Foreground(onAccent).Bold(true)
+	titleOff  = lipgloss.NewStyle().Background(surfaceC).Foreground(dimC).Bold(true)
+	chipSt    = lipgloss.NewStyle().Background(surfaceC).Foreground(dimC)
+	keySt     = lipgloss.NewStyle().Background(surfaceC).Foreground(strongC).Bold(true)
 )
 
 // rowMatch records which runes of a row matched the filter, for highlighting.
@@ -418,7 +429,13 @@ func (m Model) previewWidth() int {
 	return max(36, min(64, m.width*2/5))
 }
 
-func (m Model) listWidth() int { return m.width - m.previewWidth() }
+// listWidth leaves one gap column between the two panels when both show.
+func (m Model) listWidth() int {
+	if !m.previewVisible() {
+		return m.width
+	}
+	return m.width - m.previewWidth() - 1
+}
 
 // listHeight is the row count inside the panel: total minus header, panel
 // borders, and help bar.
@@ -433,11 +450,12 @@ func (m Model) View() string {
 		return ""
 	}
 	h := m.listHeight()
-	list := panel("Projects", m.renderRows(h), m.listWidth(), h)
+	thumbStart, thumbLen := m.scrollThumb(h)
+	list := panel("Projects", true, m.renderRows(h), m.listWidth(), h, thumbStart, thumbLen)
 	if m.previewVisible() {
-		prev := panel("Preview", m.renderPreviewLines(m.previewWidth()-4, h), m.previewWidth(), h)
+		prev := panel("Preview", false, m.renderPreviewLines(m.previewWidth()-4, h), m.previewWidth(), h, 0, 0)
 		for i := range list {
-			list[i] += prev[i]
+			list[i] += " " + prev[i]
 		}
 	}
 	return m.renderHeader() + "\n" + strings.Join(list, "\n") + "\n" + m.renderHelp()
@@ -445,7 +463,7 @@ func (m Model) View() string {
 
 func (m Model) renderHeader() string {
 	left := " " + m.input.View()
-	counter := dim.Render(fmt.Sprintf("%d/%d", len(m.filtered), len(m.all)))
+	counter := chipSt.Render(fmt.Sprintf(" %d/%d ", len(m.filtered), len(m.all)))
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(counter) - 2
 	if gap < 1 {
 		gap = 1
@@ -453,15 +471,22 @@ func (m Model) renderHeader() string {
 	return left + strings.Repeat(" ", gap) + counter
 }
 
-// panel wraps content lines in a rounded border with an embedded title.
-// Content lines must already be exactly w-4 display cells wide.
-func panel(title string, content []string, w, h int) []string {
+// panel wraps content lines in a rounded border with a chip-style title
+// (accent for the active panel). When thumbLen > 0, the right border doubles
+// as a scrollbar: rows within [thumbStart, thumbStart+thumbLen) get a thumb.
+// Content lines must already be at most w-4 display cells wide.
+func panel(title string, active bool, content []string, w, h, thumbStart, thumbLen int) []string {
 	inner := max(2, w-2)
-	t := titleSt.Render(" " + title + " ")
+	ts := titleOff
+	if active {
+		ts = titleOn
+	}
+	t := ts.Render(" " + title + " ")
 	fill := max(0, inner-1-lipgloss.Width(t))
 	out := make([]string, 0, h+2)
 	out = append(out, borderSt.Render("╭─")+t+borderSt.Render(strings.Repeat("─", fill)+"╮"))
 	side := borderSt.Render("│")
+	thumb := thumbSt.Render("┃")
 	for i := 0; i < h; i++ {
 		line := ""
 		if i < len(content) {
@@ -470,17 +495,36 @@ func panel(title string, content []string, w, h int) []string {
 		if pad := inner - 2 - lipgloss.Width(line); pad > 0 {
 			line += strings.Repeat(" ", pad)
 		}
-		out = append(out, side+" "+line+" "+side)
+		right := side
+		if thumbLen > 0 && i >= thumbStart && i < thumbStart+thumbLen {
+			right = thumb
+		}
+		out = append(out, side+" "+line+" "+right)
 	}
 	out = append(out, borderSt.Render("╰"+strings.Repeat("─", inner)+"╯"))
 	return out
+}
+
+// scrollThumb maps the visible window onto a thumb on the panel's right
+// border; zero length means everything fits and no thumb is drawn.
+func (m Model) scrollThumb(h int) (start, length int) {
+	total := len(m.filtered)
+	if h <= 0 || total <= h {
+		return 0, 0
+	}
+	length = max(1, h*h/total)
+	maxOff := total - h
+	start = (m.offset*(h-length) + maxOff/2) / maxOff
+	return start, length
 }
 
 func (m Model) renderRows(h int) []string {
 	cw := max(10, m.listWidth()-4)
 	out := make([]string, 0, h)
 	if len(m.filtered) == 0 {
-		out = append(out, dim.Render("nothing matches — ctrl+u clears the filter"))
+		out = append(out, "",
+			dim.Render("  ◌  nothing matches"),
+			dim.Render("     ctrl+u clears the filter"))
 		return out
 	}
 	end := min(m.offset+h, len(m.filtered))
@@ -505,7 +549,7 @@ func (m Model) renderRow(row int, selected bool, cw int) string {
 	nameW := min(24, max(12, cw/3))
 	showBadge := cw >= 46
 	showGit := cw >= 74
-	gitW := 14
+	gitW := 15
 
 	var b strings.Builder
 	if selected {
@@ -523,7 +567,11 @@ func (m Model) renderRow(row int, selected bool, cw int) string {
 	if !match.onName {
 		namePos = nil
 	}
-	name := highlight(p.Name, namePos, seg(nameSt), seg(matchSt), nameW)
+	baseName := nameSt
+	if selected {
+		baseName = nameSelSt
+	}
+	name := highlight(p.Name, namePos, seg(baseName), seg(matchSt), nameW)
 	b.WriteString(name)
 	b.WriteString(seg(plain).Render(strings.Repeat(" ", max(0, nameW-lipgloss.Width(name))+1)))
 
@@ -541,16 +589,18 @@ func (m Model) renderRow(row int, selected bool, cw int) string {
 	}
 
 	if showGit {
-		cell := ""
+		branch, dirty := "", ""
 		if st, ok := m.git[p.Path]; ok && st.IsRepo {
-			cell = truncate(st.Branch, 10)
+			branch = "⎇ " + truncate(st.Branch, 9)
 			if st.Dirty > 0 {
-				cell += fmt.Sprintf("*%d", min(st.Dirty, 99))
+				dirty = fmt.Sprintf(" +%d", min(st.Dirty, 99))
 			}
 		}
 		b.WriteString(seg(plain).Render("  "))
-		b.WriteString(seg(gitSt).Render(cell))
-		b.WriteString(seg(plain).Render(strings.Repeat(" ", max(0, gitW-lipgloss.Width(cell)))))
+		b.WriteString(seg(gitSt).Render(branch))
+		b.WriteString(seg(dirtySt).Render(dirty))
+		used := lipgloss.Width(branch) + lipgloss.Width(dirty)
+		b.WriteString(seg(plain).Render(strings.Repeat(" ", max(0, gitW-used))))
 	}
 
 	rest := cw - lipgloss.Width(b.String()) - 1
@@ -648,30 +698,46 @@ func (m Model) renderPreviewLines(cw, h int) []string {
 		add(strings.Join(usage, dim.Render("  ·  ")))
 	}
 	if st, ok := m.git[p.Path]; ok && st.IsRepo {
-		line := gitSt.Render(st.Branch)
+		line := gitSt.Render("⎇ " + st.Branch)
 		if st.Dirty > 0 {
-			line += dirtySt.Render(fmt.Sprintf("  %d uncommitted", st.Dirty))
+			line += dirtySt.Render(fmt.Sprintf("  ● %d uncommitted", st.Dirty))
 		}
 		add(line)
 	}
+	add("")
 	action := m.cfg.ActionFor(p.Path)
-	add(dim.Render("enter → ") + accent.Render(action))
-	add(dim.Render(strings.Repeat("─", cw)))
+	add(keySt.Render(" enter ") + dim.Render(" → ") + actionStyle(action).Render(action))
+	add(dim.Render(strings.Repeat("┄", cw)))
 
 	if snip, ok := m.previews[p.Path]; ok {
 		if snip.Text != "" {
-			add(dim.Render(fmt.Sprintf("last session · %s · %s", snip.Agent, snip.Role)))
-			add(wrap.Render(snip.Text))
+			add(labelSt.Render(fmt.Sprintf("last session · %s · %s", snip.Agent, snip.Role)))
+			quote := borderSt.Render("▏ ")
+			for _, l := range strings.Split(lipgloss.NewStyle().Width(cw-2).Render(snip.Text), "\n") {
+				add(quote + l)
+			}
 		} else {
-			add(dim.Render("no session preview"))
+			add(labelSt.Render("no session preview"))
 		}
 	} else if p.LastAgent != "" {
-		add(dim.Render("loading preview…"))
+		add(labelSt.Render("loading preview…"))
 	}
 	if len(lines) > h {
 		lines = lines[:h]
 	}
 	return lines
+}
+
+// actionStyle colors an action hint with the same hue as its agent badge.
+func actionStyle(action string) lipgloss.Style {
+	switch action {
+	case config.ActionClaude:
+		return claudeSt
+	case config.ActionCodex:
+		return codexSt
+	default:
+		return accent
+	}
 }
 
 func (m Model) renderHelp() string {
@@ -682,17 +748,17 @@ func (m Model) renderHelp() string {
 	}
 	var parts []string
 	for _, it := range items {
-		parts = append(parts, helpKey.Render(it.key)+dim.Render(" "+it.label))
+		parts = append(parts, keySt.Render(" "+it.key+" ")+dim.Render(" "+it.label))
 	}
-	full := "  " + strings.Join(parts, dim.Render("  ·  "))
+	full := " " + strings.Join(parts, "  ")
 	if lipgloss.Width(full) <= m.width {
 		return full
 	}
 	var keys []string
 	for _, it := range items {
-		keys = append(keys, helpKey.Render(it.key))
+		keys = append(keys, keySt.Render(" "+it.key+" "))
 	}
-	return "  " + strings.Join(keys, " ")
+	return " " + strings.Join(keys, " ")
 }
 
 func truncate(s string, w int) string {
@@ -720,6 +786,23 @@ func max(a, b int) int {
 	return b
 }
 
+// darkBackground guesses the terminal background from COLORFGBG (set by
+// iTerm2, Konsole, rxvt: "fg;bg"). We deliberately avoid termenv's OSC 11
+// query — on terminals that never answer it, it blocks startup for its full
+// timeout and can swallow the first keypress. Dark is the safe default.
+func darkBackground() bool {
+	v := os.Getenv("COLORFGBG")
+	i := strings.LastIndex(v, ";")
+	if i < 0 {
+		return true
+	}
+	switch v[i+1:] {
+	case "7", "15":
+		return false
+	}
+	return true
+}
+
 // Run shows the picker on /dev/tty and returns the user's choice, or nil if
 // cancelled.
 func Run(cfg *config.Config, projects []index.Project) (*Result, error) {
@@ -728,6 +811,12 @@ func Run(cfg *config.Config, projects []index.Project) (*Result, error) {
 		return nil, fmt.Errorf("psw pick needs an interactive terminal: %w", err)
 	}
 	defer tty.Close()
+	// lipgloss's default renderer sniffs os.Stdout for color support, but the
+	// shell wrapper redirects stdout (only the tty shows the UI) — so styles
+	// would silently degrade to plain Ascii. Detect against the tty instead.
+	renderer := lipgloss.DefaultRenderer()
+	renderer.SetColorProfile(termenv.NewOutput(tty).EnvColorProfile())
+	renderer.SetHasDarkBackground(darkBackground())
 	prog := tea.NewProgram(New(cfg, projects),
 		tea.WithInput(tty), tea.WithOutput(tty),
 		tea.WithAltScreen(), tea.WithMouseCellMotion())
