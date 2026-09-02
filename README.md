@@ -9,18 +9,11 @@ already keep on disk (`~/.claude.json` + `~/.claude/projects`,
 `~/.codex/sessions`), so the moment you install it, every project you've ever
 opened an agent in is one keystroke away.
 
-```
-❯ learn                                          │ learnitall
-  3/55 projects                                  │ ~/Code/learnitall
-▸ learnitall      ✳ claude  5d  main    ~/Code/… │ ✳ claude 5d ago · ◆ codex 8d ago
-  learn-notes     ◆ codex   2w          ~/Doc/…  │  main  3 uncommitted
-                                                 │ ────────────────────────────
-                                                 │ last session · claude (assistant)
-                                                 │ Done — the review scheduler now
-                                                 │ retries failed fetches and all
-                                                 │ 12 tests pass.
- enter default · ^o cd · ^a claude · ^x codex · ^r resume · ^s pin · esc quit
-```
+![perch demo](docs/demo/demo.gif)
+
+*(All project names above are fabricated — the demo renders from a synthetic
+home built by [`docs/demo/setup.sh`](docs/demo/setup.sh); regenerate the media
+any time with `bash docs/demo/setup.sh && vhs docs/demo/demo.tape`.)*
 
 ## Install
 
