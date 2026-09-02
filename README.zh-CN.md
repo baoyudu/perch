@@ -18,8 +18,6 @@
 
 ![perch demo](docs/demo/demo.gif)
 
-*（上图中的项目名均为虚构——演示画面由
-[`docs/demo/setup.sh`](docs/demo/setup.sh) 生成的合成数据渲染而成。）*
 
 ## 安装
 
