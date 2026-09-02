@@ -20,8 +20,6 @@ opened an agent in is one keystroke away.
 
 ![perch demo](docs/demo/demo.gif)
 
-*(All project names above are fabricated — the demo renders from a synthetic
-home built by [`docs/demo/setup.sh`](docs/demo/setup.sh).)*
 
 ## Install
 
