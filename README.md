@@ -1,5 +1,7 @@
 # perch — a perch for your agent projects
 
+**English** | [中文](README.zh-CN.md)
+
 Jump straight from a fresh terminal into the project you were just working on
 with **Claude Code** or **Codex** — and optionally relaunch the agent, or even
 resume the last conversation.
@@ -12,8 +14,7 @@ opened an agent in is one keystroke away.
 ![perch demo](docs/demo/demo.gif)
 
 *(All project names above are fabricated — the demo renders from a synthetic
-home built by [`docs/demo/setup.sh`](docs/demo/setup.sh); regenerate the media
-any time with `bash docs/demo/setup.sh && vhs docs/demo/demo.tape`.)*
+home built by [`docs/demo/setup.sh`](docs/demo/setup.sh).)*
 
 ## Install
 
@@ -109,13 +110,6 @@ renders the TUI on `/dev/tty` and prints two lines to stdout — the chosen
 directory and the command to run (`-` for none). The tiny function from
 `perch init` does the actual `cd` and launch. Codex session metadata is indexed
 incrementally into `~/.cache/perch/` so startup stays instant.
-
-## 中文速览
-
-打开新终端后输入 `p`，即可模糊搜索最近用 Claude Code / Codex 工作过的项目，
-回车直达；`^A`/`^X` 在进入目录的同时启动对应 agent，`^R` 直接续接上次对话。
-无需任何配置——项目列表来自两个工具自己的会话历史。安装后在 `~/.zshrc`
-里加一行 `eval "$(perch init zsh)"` 即可。
 
 ## License
 
