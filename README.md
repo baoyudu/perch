@@ -39,11 +39,6 @@ perch init fish | source     # ~/.config/fish/config.fish
 
 Then type **`p`** in any terminal.
 
-> **Renamed from `psw`** (≤ v0.4.0): your old `~/.config/psw` is copied to
-> `~/.config/perch` automatically on first run (originals untouched). Just
-> swap the eval line above in your rc file and
-> `brew uninstall --cask psw && brew install --cask baoyudu/tap/perch`.
-
 ## Keys
 
 | Key | Action |
