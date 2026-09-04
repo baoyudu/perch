@@ -5,6 +5,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -96,6 +97,7 @@ type iconSet struct {
 	branch   string // git branch prefix
 	preview  string // preview panel title
 	settings string // settings panel title
+	create   string // new-project panel title
 }
 
 var nerdIcons = iconSet{
@@ -107,6 +109,7 @@ var nerdIcons = iconSet{
 	branch:   " ", //  powerline branch
 	preview:  " Preview",
 	settings: " Settings",
+	create:   " New project",
 }
 
 var plainIcons = iconSet{
@@ -118,6 +121,7 @@ var plainIcons = iconSet{
 	branch:   "⎇ ",
 	preview:  "Preview",
 	settings: "Settings",
+	create:   "New project",
 }
 
 // scope narrows the list to projects that have sessions from one agent.
@@ -131,13 +135,15 @@ const (
 )
 
 // mode is which pane owns the keyboard: the list (default), the preview
-// (entered with →, scrollable), or the settings page (^e).
+// (entered with →, scrollable), the settings page (^e), or the new-project
+// page (^t).
 type mode int
 
 const (
 	modeList mode = iota
 	modePreview
 	modeSettings
+	modeCreate
 )
 
 // rowMatch records which runes of a row matched the filter, for highlighting.
@@ -157,8 +163,11 @@ type Model struct {
 	mode        mode
 	settingsRow int // cursor within the settings page
 	previewOff  int // scroll offset within the preview pane
+	editingDir  bool
+	createErr   string
 	ic          iconSet
 	input       textinput.Model
+	editor      textinput.Model // shared by the create page and the dir editor
 	width       int
 	height      int
 	git         map[string]gitinfo.Status
@@ -179,11 +188,15 @@ func New(cfg *config.Config, projects []index.Project) Model {
 	ti.Placeholder = "type to filter"
 	ti.PlaceholderStyle = dim
 	ti.Focus()
+	ed := textinput.New()
+	ed.PromptStyle = accent
+	ed.PlaceholderStyle = dim
 	m := Model{
 		cfg:        cfg,
 		all:        projects,
 		ic:         ic,
 		input:      ti,
+		editor:     ed,
 		width:      80,
 		height:     24,
 		git:        map[string]gitinfo.Status{},
@@ -239,6 +252,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeSettings {
 			return m.updateSettings(msg)
 		}
+		if m.mode == modeCreate {
+			return m.updateCreate(msg)
+		}
 		if m.mode == modePreview {
 			if next, cmd, handled := m.updatePreview(msg); handled {
 				return next, cmd
@@ -249,6 +265,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case tea.KeyCtrlE:
 			return m.openSettings()
+		case tea.KeyCtrlT:
+			return m.openCreate()
 		case tea.KeyRight:
 			// Focus the preview only when the input cursor is already at the
 			// end; otherwise → keeps editing the filter text.
@@ -301,7 +319,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if m.mode == modeSettings {
+	if m.mode == modeSettings || m.mode == modeCreate {
 		return m, nil
 	}
 	inPreview := m.previewVisible() && msg.X > m.listWidth()
@@ -440,11 +458,70 @@ func (m Model) openSettings() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// settingOptions lists the cycleable values per settings row.
+// openCreate switches to the new-project page. An unmatched filter query is
+// the likeliest name for the project being created, so it prefills.
+func (m Model) openCreate() (tea.Model, tea.Cmd) {
+	m.mode = modeCreate
+	m.createErr = ""
+	m.editor.Prompt = m.ic.prompt
+	m.editor.Placeholder = "project name"
+	m.editor.SetValue("")
+	if q := strings.TrimSpace(m.input.Value()); q != "" && len(m.filtered) == 0 {
+		m.editor.SetValue(q)
+		m.editor.CursorEnd()
+	}
+	m.editor.Focus()
+	m.input.Blur()
+	return m, nil
+}
+
+func (m Model) updateCreate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyCtrlC:
+		return m, tea.Quit
+	case tea.KeyEsc:
+		m.mode = modeList
+		m.input.Focus()
+		return m, nil
+	case tea.KeyEnter:
+		return m.createProject()
+	}
+	var cmd tea.Cmd
+	m.editor, cmd = m.editor.Update(msg)
+	m.createErr = ""
+	return m, cmd
+}
+
+// createProject makes the directory under projects_dir (a no-op if it already
+// exists) and finishes with the default action; resume degrades to cd since a
+// fresh project has no session to pick up.
+func (m Model) createProject() (tea.Model, tea.Cmd) {
+	name := strings.TrimSpace(m.editor.Value())
+	if name == "" {
+		return m, nil
+	}
+	path := filepath.Join(m.cfg.ProjectsDirAbs(), name)
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		m.createErr = err.Error()
+		return m, nil
+	}
+	act := Action(m.cfg.ActionFor(path))
+	if act == ActResume {
+		act = ActCD
+	}
+	m.cfg.MarkSettingsHintSeen()
+	m.result = &Result{Project: index.Project{Path: path, Name: filepath.Base(path)}, Action: act}
+	return m, tea.Quit
+}
+
+// settingOptions lists the cycleable values per enum settings row; the
+// projects-dir row is free text and edited in place.
 var settingOptions = [][]string{
 	{config.ActionCD, config.ActionClaude, config.ActionCodex, config.ActionResume}, // default action
 	{"nerd", "plain"}, // icons
 }
+
+const settingsRowCount = 3 // enum rows above + the projects-dir editor
 
 func (m Model) settingValue(row int) string {
 	if row == 0 {
@@ -479,6 +556,37 @@ func (m Model) cycleSetting(delta int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.editingDir {
+		switch msg.Type {
+		case tea.KeyCtrlC:
+			return m, tea.Quit
+		case tea.KeyEsc:
+			m.editingDir = false
+			return m, nil
+		case tea.KeyEnter:
+			if v := strings.TrimSpace(m.editor.Value()); v != "" {
+				if err := m.cfg.SetProjectsDir(v); err == nil {
+					m.editingDir = false
+				}
+			}
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.editor, cmd = m.editor.Update(msg)
+		return m, cmd
+	}
+	adjust := func(action string) (tea.Model, tea.Cmd) {
+		if m.settingsRow < len(settingOptions) {
+			if action == "prev" {
+				return m.cycleSetting(-1)
+			}
+			return m.cycleSetting(1)
+		}
+		if action == "prev" {
+			return m, nil // nothing to cycle on the text row
+		}
+		return m.startDirEdit()
+	}
 	switch msg.Type {
 	case tea.KeyCtrlC:
 		return m, tea.Quit
@@ -490,25 +598,36 @@ func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.settingsRow = max(0, m.settingsRow-1)
 		return m, nil
 	case tea.KeyDown, tea.KeyCtrlN, tea.KeyCtrlJ:
-		m.settingsRow = min(len(settingOptions)-1, m.settingsRow+1)
+		m.settingsRow = min(settingsRowCount-1, m.settingsRow+1)
 		return m, nil
 	case tea.KeyLeft:
-		return m.cycleSetting(-1)
+		return adjust("prev")
 	case tea.KeyRight, tea.KeyEnter, tea.KeySpace:
-		return m.cycleSetting(1)
+		return adjust("next")
 	case tea.KeyRunes:
 		switch string(msg.Runes) {
 		case "k":
 			m.settingsRow = max(0, m.settingsRow-1)
 		case "j":
-			m.settingsRow = min(len(settingOptions)-1, m.settingsRow+1)
+			m.settingsRow = min(settingsRowCount-1, m.settingsRow+1)
 		case "h":
-			return m.cycleSetting(-1)
+			return adjust("prev")
 		case "l", " ":
-			return m.cycleSetting(1)
+			return adjust("next")
 		}
 		return m, nil
 	}
+	return m, nil
+}
+
+// startDirEdit begins in-place editing of projects_dir.
+func (m Model) startDirEdit() (tea.Model, tea.Cmd) {
+	m.editingDir = true
+	m.editor.Prompt = ""
+	m.editor.Placeholder = "~/Code"
+	m.editor.SetValue(m.cfg.Defaults.ProjectsDir)
+	m.editor.CursorEnd()
+	m.editor.Focus()
 	return m, nil
 }
 
@@ -728,6 +847,10 @@ func (m Model) View() string {
 		body := panel(m.ic.settings, titleOn, m.renderSettings(), m.width, h, 0, 0)
 		return m.renderHeader() + "\n" + strings.Join(body, "\n") + "\n" + m.renderHelp()
 	}
+	if m.mode == modeCreate {
+		body := panel(m.ic.create, titleOn, m.renderCreate(), m.width, h, 0, 0)
+		return m.renderHeader() + "\n" + strings.Join(body, "\n") + "\n" + m.renderHelp()
+	}
 	thumbStart, thumbLen := thumbFor(m.offset, h, len(m.filtered))
 	title, titleSt := m.listTitle()
 	if m.mode == modePreview {
@@ -822,7 +945,7 @@ func (m Model) renderRows(h int) []string {
 	cw := max(10, m.listWidth()-4)
 	out := make([]string, 0, h)
 	if len(m.filtered) == 0 {
-		what, hint := "nothing matches", "ctrl+u clears the filter"
+		what, hint := "nothing matches", "ctrl+u clears · ^t creates it"
 		if m.input.Value() == "" {
 			switch m.scope {
 			case scopeClaude:
@@ -1047,10 +1170,11 @@ func (m Model) renderPreviewLines(cw int) []string {
 // current value highlighted in a segmented control.
 func (m Model) renderSettings() []string {
 	cw := max(10, m.width-4)
-	labels := []string{"default action", "icons"}
+	labels := []string{"default action", "icons", "projects dir"}
 	notes := []string{
 		"what enter does when a project has no per-project action",
 		"nerd needs a Nerd Font (nerdfonts.com); plain works everywhere",
+		"where ^t creates new projects",
 	}
 	out := []string{""}
 	for i, label := range labels {
@@ -1058,25 +1182,66 @@ func (m Model) renderSettings() []string {
 		if i == m.settingsRow {
 			marker = accent.Render("▌ ")
 		}
-		var cells []string
-		for _, v := range settingOptions[i] {
-			switch {
-			case v == m.settingValue(i) && i == m.settingsRow:
-				cells = append(cells, titleOn.Render(" "+v+" "))
-			case v == m.settingValue(i):
-				cells = append(cells, keySt.Render(" "+v+" "))
-			default:
-				cells = append(cells, dim.Render(" "+v+" "))
+		var value string
+		switch {
+		case i >= len(settingOptions) && m.editingDir:
+			value = m.editor.View()
+		case i >= len(settingOptions):
+			v := " " + m.cfg.Defaults.ProjectsDir + " "
+			if i == m.settingsRow {
+				value = titleOn.Render(v) + dim.Render("  enter edits")
+			} else {
+				value = keySt.Render(v)
 			}
+		default:
+			var cells []string
+			for _, v := range settingOptions[i] {
+				switch {
+				case v == m.settingValue(i) && i == m.settingsRow:
+					cells = append(cells, titleOn.Render(" "+v+" "))
+				case v == m.settingValue(i):
+					cells = append(cells, keySt.Render(" "+v+" "))
+				default:
+					cells = append(cells, dim.Render(" "+v+" "))
+				}
+			}
+			value = strings.Join(cells, " ")
 		}
 		pad := strings.Repeat(" ", max(1, 18-lipgloss.Width(label)))
-		out = append(out, marker+nameSt.Render(label)+pad+strings.Join(cells, " "),
+		out = append(out, marker+nameSt.Render(label)+pad+value,
 			dim.Render("                    "+truncate(notes[i], max(0, cw-20))), "")
 	}
 	out = append(out, "",
 		dim.Render("  config   ")+labelSt.Render(truncate(index.TildePath(config.Path()), max(0, cw-11))),
 		dim.Render(truncate("  changes edit just these keys in that file — the rest of it,", cw)),
 		dim.Render(truncate("  comments included, is left byte-for-byte intact", cw)))
+	return out
+}
+
+// renderCreate lays out the new-project page.
+func (m Model) renderCreate() []string {
+	cw := max(10, m.width-4)
+	name := strings.TrimSpace(m.editor.Value())
+	shown := name
+	if shown == "" {
+		shown = "…"
+	}
+	target := strings.TrimRight(m.cfg.Defaults.ProjectsDir, "/") + "/" + shown
+	out := []string{"",
+		"  " + m.editor.View(),
+		"",
+		dim.Render("  will create  ") + labelSt.Render(truncate(target, max(0, cw-15))),
+	}
+	if name != "" {
+		if info, err := os.Stat(filepath.Join(m.cfg.ProjectsDirAbs(), name)); err == nil && info.IsDir() {
+			out = append(out, "", pinSt.Render("  already exists — enter opens it"))
+		}
+	}
+	if m.createErr != "" {
+		out = append(out, "", dirtySt.Render("  "+truncate(m.createErr, max(0, cw-2))))
+	}
+	out = append(out, "",
+		dim.Render(truncate("  the parent dir is [defaults] projects_dir — change it in settings (^e)", cw)))
 	return out
 }
 
@@ -1097,7 +1262,13 @@ func (m Model) renderHelp() string {
 	var items []item
 	switch m.mode {
 	case modeSettings:
-		items = []item{{"↑↓", "select"}, {"←→", "change"}, {"esc", "back"}}
+		if m.editingDir {
+			items = []item{{"enter", "save"}, {"esc", "cancel"}}
+		} else {
+			items = []item{{"↑↓", "select"}, {"←→", "change"}, {"esc", "back"}}
+		}
+	case modeCreate:
+		items = []item{{"enter", "create & open"}, {"esc", "back"}}
 	case modePreview:
 		items = []item{
 			{"↑↓", "scroll"}, {"←", "back"}, {"enter", "default"},
@@ -1106,7 +1277,7 @@ func (m Model) renderHelp() string {
 	default:
 		items = []item{
 			{"enter", "default"}, {"tab", "scope"}, {"→", "preview"}, {"^a", "claude"},
-			{"^x", "codex"}, {"^r", "resume"}, {"^s", "pin"}, {"^e", "settings"}, {"esc", "quit"},
+			{"^x", "codex"}, {"^r", "resume"}, {"^s", "pin"}, {"^t", "new"}, {"^e", "settings"},
 		}
 	}
 	var parts []string

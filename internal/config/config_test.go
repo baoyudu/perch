@@ -212,3 +212,22 @@ func TestMigrateLegacyPswDir(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectsDirDefaultAndExpansion(t *testing.T) {
+	setupDir(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.ProjectsDir != "~/Code" {
+		t.Errorf("default projects_dir = %q, want ~/Code", cfg.Defaults.ProjectsDir)
+	}
+	home, _ := os.UserHomeDir()
+	if got := cfg.ProjectsDirAbs(); got != filepath.Join(home, "Code") {
+		t.Errorf("ProjectsDirAbs = %q", got)
+	}
+	cfg.Defaults.ProjectsDir = "/abs/path"
+	if got := cfg.ProjectsDirAbs(); got != "/abs/path" {
+		t.Errorf("absolute path should pass through, got %q", got)
+	}
+}

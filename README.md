@@ -51,7 +51,8 @@ Then type **`p`** in any terminal.
 | `^X` | `cd` + launch **codex** |
 | `^R` | `cd` + **resume** the last session (`claude --continue` / `codex resume <id>`) |
 | `^S` | pin/unpin project to the top |
-| `^E` | settings page (default action, icon set) |
+| `^T` | create a new project under `projects_dir` |
+| `^E` | settings page (default action, icon set, projects dir) |
 | `→` | focus the preview pane: `↑↓`/`jk` scroll, `←`/`Esc` back |
 | `↑↓` `^P^N` `^K^J` | navigate |
 | `Esc` / `^C` | cancel |
@@ -75,6 +76,7 @@ ignore = ["**/.worktrees/**", "**/.claude/worktrees/**", "**/.claude-worktrees/*
 [defaults]
 action = "cd"          # what Enter does: cd | claude | codex | resume
 command = "p"          # name of the shell function
+projects_dir = "~/Code" # where ^T creates new projects
 claude_args = []       # extra args whenever claude is launched
 codex_args = []        # extra args whenever codex is launched
 

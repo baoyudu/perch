@@ -30,10 +30,11 @@ var DefaultIgnore = []string{
 }
 
 type Defaults struct {
-	Action     string   `toml:"action"`
-	ClaudeArgs []string `toml:"claude_args"`
-	CodexArgs  []string `toml:"codex_args"`
-	Command    string   `toml:"command"`
+	Action      string   `toml:"action"`
+	ClaudeArgs  []string `toml:"claude_args"`
+	CodexArgs   []string `toml:"codex_args"`
+	Command     string   `toml:"command"`
+	ProjectsDir string   `toml:"projects_dir"` // where ^T creates new projects
 }
 
 type ProjectConfig struct {
@@ -158,6 +159,9 @@ func Load() (*Config, error) {
 	if cfg.UI.Icons != "plain" {
 		cfg.UI.Icons = "nerd"
 	}
+	if cfg.Defaults.ProjectsDir == "" {
+		cfg.Defaults.ProjectsDir = "~/Code"
+	}
 	if cfg.Projects == nil {
 		cfg.Projects = map[string]ProjectConfig{}
 	}
@@ -202,6 +206,26 @@ func (c *Config) Pinned(path string) bool {
 func (c *Config) SetPinned(path string, pinned bool) error {
 	c.state.Pinned[path] = pinned
 	return c.saveState()
+}
+
+// ProjectsDirAbs returns projects_dir with a leading ~ expanded.
+func (c *Config) ProjectsDirAbs() string {
+	d := c.Defaults.ProjectsDir
+	if d == "~" || strings.HasPrefix(d, "~/") {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			return filepath.Join(home, strings.TrimPrefix(d[1:], "/"))
+		}
+	}
+	return d
+}
+
+// SetProjectsDir writes projects_dir into config.toml and applies it.
+func (c *Config) SetProjectsDir(dir string) error {
+	if err := c.editConfigKey("defaults", "projects_dir", dir); err != nil {
+		return err
+	}
+	c.Defaults.ProjectsDir = dir
+	return nil
 }
 
 // SetDefaultAction writes the Enter action into config.toml and applies it.

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -200,6 +202,86 @@ func TestScopeCombinesWithQuery(t *testing.T) {
 	m = typeRunes(m, "learn") // learnitall is codex-only
 	if len(m.filtered) != 0 {
 		t.Fatalf("query outside scope should match nothing, got %d", len(m.filtered))
+	}
+}
+
+func TestCreateProjectFlow(t *testing.T) {
+	m := testModel(t)
+	dir := t.TempDir()
+	m.cfg.Defaults.ProjectsDir = dir
+	m = typeRunes(m, "zzz-new") // matches nothing → prefills the create page
+	next, _ := m.Update(key(tea.KeyCtrlT))
+	m = next.(Model)
+	if m.mode != modeCreate || m.editor.Value() != "zzz-new" {
+		t.Fatalf("ctrl+t should open create prefilled, mode=%d value=%q", m.mode, m.editor.Value())
+	}
+	next, _ = m.Update(key(tea.KeyEnter))
+	m = next.(Model)
+	want := filepath.Join(dir, "zzz-new")
+	if m.result == nil || m.result.Project.Path != want || m.result.Action != ActCD {
+		t.Fatalf("create should finish with cd into %s, got %+v", want, m.result)
+	}
+	if info, err := os.Stat(want); err != nil || !info.IsDir() {
+		t.Fatal("directory should have been created")
+	}
+}
+
+func TestCreateWithResumeDefaultFallsBackToCD(t *testing.T) {
+	m := testModel(t)
+	m.cfg.Defaults.ProjectsDir = t.TempDir()
+	m.cfg.Defaults.Action = config.ActionResume
+	next, _ := m.Update(key(tea.KeyCtrlT))
+	m = next.(Model)
+	m.editor.SetValue("fresh")
+	next, _ = m.Update(key(tea.KeyEnter))
+	m = next.(Model)
+	if m.result == nil || m.result.Action != ActCD {
+		t.Fatalf("new project has nothing to resume; want cd, got %+v", m.result)
+	}
+}
+
+func TestCreateEscCancels(t *testing.T) {
+	m := testModel(t)
+	dir := t.TempDir()
+	m.cfg.Defaults.ProjectsDir = dir
+	next, _ := m.Update(key(tea.KeyCtrlT))
+	m = next.(Model)
+	m.editor.SetValue("never")
+	next, _ = m.Update(key(tea.KeyEsc))
+	m = next.(Model)
+	if m.mode != modeList || m.result != nil {
+		t.Fatal("esc should cancel back to the list")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "never")); err == nil {
+		t.Fatal("cancelled create must not make a directory")
+	}
+}
+
+func TestSettingsEditProjectsDir(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(key(tea.KeyCtrlE))
+	m = next.(Model)
+	next, _ = m.Update(key(tea.KeyDown))
+	m = next.(Model)
+	next, _ = m.Update(key(tea.KeyDown)) // projects dir row
+	m = next.(Model)
+	next, _ = m.Update(key(tea.KeyEnter)) // start editing
+	m = next.(Model)
+	if !m.editingDir || m.editor.Value() != "~/Code" {
+		t.Fatalf("enter should start editing prefilled, editing=%v value=%q", m.editingDir, m.editor.Value())
+	}
+	m.editor.SetValue("~/Work")
+	next, _ = m.Update(key(tea.KeyEnter)) // save
+	m = next.(Model)
+	if m.editingDir || m.cfg.Defaults.ProjectsDir != "~/Work" {
+		t.Fatalf("save failed: editing=%v dir=%q", m.editingDir, m.cfg.Defaults.ProjectsDir)
+	}
+	cfg2, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg2.Defaults.ProjectsDir != "~/Work" {
+		t.Errorf("projects_dir should persist to config.toml, got %q", cfg2.Defaults.ProjectsDir)
 	}
 }
 

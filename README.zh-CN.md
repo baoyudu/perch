@@ -54,7 +54,8 @@ perch init fish | source     # ~/.config/fish/config.fish
 | `^X` | `cd` + 启动 **codex** |
 | `^R` | `cd` + **续接**上次会话（`claude --continue` / `codex resume <id>`） |
 | `^S` | 置顶 / 取消置顶 |
-| `^E` | 设置页（默认动作、图标集） |
+| `^T` | 在 `projects_dir` 下新建项目 |
+| `^E` | 设置页（默认动作、图标集、项目位置） |
 | `→` | 聚焦预览栏：`↑↓`/`jk` 滚动，`←`/`Esc` 返回 |
 | `↑↓` `^P^N` `^K^J` | 上下移动 |
 | `Esc` / `^C` | 取消 |
@@ -77,6 +78,7 @@ ignore = ["**/.worktrees/**", "**/.claude/worktrees/**", "**/.claude-worktrees/*
 [defaults]
 action = "cd"          # Enter 的动作：cd | claude | codex | resume
 command = "p"          # shell 函数的名字
+projects_dir = "~/Code" # ^T 新建项目的位置
 claude_args = []       # 每次启动 claude 附加的参数
 codex_args = []        # 每次启动 codex 附加的参数
 
