@@ -261,10 +261,10 @@ func TestSettingsEditProjectsDir(t *testing.T) {
 	m := testModel(t)
 	next, _ := m.Update(key(tea.KeyCtrlE))
 	m = next.(Model)
-	next, _ = m.Update(key(tea.KeyDown))
-	m = next.(Model)
-	next, _ = m.Update(key(tea.KeyDown)) // projects dir row
-	m = next.(Model)
+	for i := 0; i < settingsRowCount-1; i++ { // down to the projects dir row
+		next, _ = m.Update(key(tea.KeyDown))
+		m = next.(Model)
+	}
 	next, _ = m.Update(key(tea.KeyEnter)) // start editing
 	m = next.(Model)
 	if !m.editingDir || m.editor.Value() != "~/Code" {
@@ -364,6 +364,13 @@ func TestSettingsCycleAndPersist(t *testing.T) {
 	}
 	if cfg2.Defaults.Action != config.ActionClaude {
 		t.Error("default action should persist via state.json")
+	}
+	next, _ = m.Update(key(tea.KeyDown)) // codex opens in
+	m = next.(Model)
+	next, _ = m.Update(key(tea.KeyRight)) // cli → desktop
+	m = next.(Model)
+	if m.cfg.Defaults.CodexApp != config.CodexDesktop {
+		t.Fatalf("codex target = %q, want desktop", m.cfg.Defaults.CodexApp)
 	}
 	next, _ = m.Update(key(tea.KeyDown)) // icons row
 	m = next.(Model)

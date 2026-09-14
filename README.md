@@ -52,7 +52,7 @@ Then type **`p`** in any terminal.
 | `^R` | `cd` + **resume** the last session (`claude --continue` / `codex resume <id>`) |
 | `^S` | pin/unpin project to the top |
 | `^T` | create a new project under `projects_dir` |
-| `^E` | settings page (default action, icon set, projects dir) |
+| `^E` | settings page (default action, codex target, icon set, projects dir) |
 | `→` | focus the preview pane: `↑↓`/`jk` scroll, `←`/`Esc` back |
 | `↑↓` `^P^N` `^K^J` | navigate |
 | `Esc` / `^C` | cancel |
@@ -79,6 +79,7 @@ command = "p"          # name of the shell function
 projects_dir = "~/Code" # where ^T creates new projects
 claude_args = []       # extra args whenever claude is launched
 codex_args = []        # extra args whenever codex is launched
+codex_app = "cli"      # where codex opens: "cli" | "desktop" (the Codex app)
 
 [ui]
 icons = "nerd"         # "nerd" (default, needs a Nerd Font) | "plain"
@@ -88,6 +89,13 @@ action = "claude"      # Enter here means: cd + claude
 args = ["--dangerously-skip-permissions"]
 pinned = true
 ```
+
+Set `codex_app = "desktop"` if you live in the Codex desktop app rather than
+the terminal: the codex action then hands the project to the app over a
+`codex://` link instead of running `codex`. Resume reopens the project's own
+thread — the app and the CLI share one session store, so a conversation
+started in either shows up in the other. `codex_args` is a CLI-only notion and
+is ignored in desktop mode. Claude is unaffected either way.
 
 You rarely need to edit the file: `^E` inside the picker opens a settings
 page for the common options. It edits `config.toml` in place, touching only

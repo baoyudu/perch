@@ -5,9 +5,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -124,6 +126,11 @@ func buildCommand(cfg *config.Config, r *tui.Result) string {
 			argv = append(argv, "--continue")
 		}
 	case config.ActionCodex:
+		if cfg.Defaults.CodexApp == config.CodexDesktop {
+			// The app takes a deep link rather than flags, so codex_args
+			// (a CLI notion) deliberately does not apply here.
+			return shell.Command(urlOpener(), codexDeepLink(p, r.Action == tui.ActResume))
+		}
 		argv = []string{"codex"}
 		if r.Action == tui.ActResume {
 			if p.CodexSessionID != "" {
@@ -137,6 +144,51 @@ func buildCommand(cfg *config.Config, r *tui.Result) string {
 	}
 	argv = append(argv, cfg.AgentArgs(p.Path, agent)...)
 	return shell.Command(argv...)
+}
+
+// codexDeepLink builds the codex:// URL that points the Codex desktop app at
+// a project: the project's own thread when resuming, otherwise a new thread
+// rooted at its directory. Desktop threads and CLI sessions share one id
+// space (both write ~/.codex/sessions/rollout-*.jsonl), so a session started
+// in the terminal reopens in the app.
+func codexDeepLink(p index.Project, resume bool) string {
+	if resume && p.CodexSessionID != "" {
+		return "codex://threads/" + url.PathEscape(p.CodexSessionID)
+	}
+	return "codex://threads/new?" + url.Values{"path": {p.Path}}.Encode()
+}
+
+// codexDesktopApp returns the bundle path of the Codex desktop app, or "" if
+// it is not installed. The app ships as ChatGPT.app but identifies itself as
+// com.openai.codex, so match on the bundle id rather than the name. Info.plist
+// is read as raw bytes because it may be XML or binary.
+func codexDesktopApp() string {
+	home, _ := os.UserHomeDir()
+	for _, dir := range []string{"/Applications", filepath.Join(home, "Applications")} {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".app") {
+				continue
+			}
+			bundle := filepath.Join(dir, e.Name())
+			data, err := os.ReadFile(filepath.Join(bundle, "Contents", "Info.plist"))
+			if err == nil && strings.Contains(string(data), "com.openai.codex") {
+				return bundle
+			}
+		}
+	}
+	return ""
+}
+
+// urlOpener is the platform command that hands a URL to the desktop.
+func urlOpener() string {
+	if runtime.GOOS == "darwin" {
+		return "open"
+	}
+	return "xdg-open"
 }
 
 func cmdList(args []string) error {
@@ -238,6 +290,14 @@ func cmdDoctor() error {
 	for _, bin := range []string{"claude", "codex", "git"} {
 		path, err := exec.LookPath(bin)
 		ok(err == nil, bin, path)
+	}
+	if runtime.GOOS == "darwin" {
+		app := codexDesktopApp()
+		if app != "" {
+			ok(true, "Codex desktop app", app)
+		} else {
+			ok(false, "Codex desktop app", "not found — [defaults] codex_app = \"desktop\" needs it")
+		}
 	}
 
 	fmt.Println("config:")

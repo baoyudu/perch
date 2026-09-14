@@ -55,7 +55,7 @@ perch init fish | source     # ~/.config/fish/config.fish
 | `^R` | `cd` + **续接**上次会话（`claude --continue` / `codex resume <id>`） |
 | `^S` | 置顶 / 取消置顶 |
 | `^T` | 在 `projects_dir` 下新建项目 |
-| `^E` | 设置页（默认动作、图标集、项目位置） |
+| `^E` | 设置页（默认动作、codex 打开方式、图标集、项目位置） |
 | `→` | 聚焦预览栏：`↑↓`/`jk` 滚动，`←`/`Esc` 返回 |
 | `↑↓` `^P^N` `^K^J` | 上下移动 |
 | `Esc` / `^C` | 取消 |
@@ -81,6 +81,7 @@ command = "p"          # shell 函数的名字
 projects_dir = "~/Code" # ^T 新建项目的位置
 claude_args = []       # 每次启动 claude 附加的参数
 codex_args = []        # 每次启动 codex 附加的参数
+codex_app = "cli"      # codex 在哪打开："cli" | "desktop"（Codex 桌面版）
 
 [ui]
 icons = "nerd"         # "nerd"（默认，需要 Nerd Font）| "plain"
@@ -90,6 +91,12 @@ action = "claude"      # 在这个项目里 Enter 意味着：cd + claude
 args = ["--dangerously-skip-permissions"]
 pinned = true
 ```
+
+如果你平时用的是 Codex 桌面版而不是终端，把 `codex_app` 设成 `"desktop"`：
+codex 动作会通过 `codex://` 链接把项目交给桌面应用，而不是运行 `codex`。
+resume 会直接打开该项目自己的对话——桌面版和 CLI 共用同一份会话记录，在
+任意一边开始的对话另一边都看得到。`codex_args` 是 CLI 才有的概念，桌面模式
+下不生效。Claude 的行为不受影响。
 
 这个文件很少需要手动编辑：在选择器里按 `^E` 打开设置页即可修改常用选项。
 它会原位编辑 `config.toml`，且只动自己管理的那几个键——注释、格式和文件里

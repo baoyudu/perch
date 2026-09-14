@@ -519,14 +519,18 @@ func (m Model) createProject() (tea.Model, tea.Cmd) {
 // projects-dir row is free text and edited in place.
 var settingOptions = [][]string{
 	{config.ActionCD, config.ActionClaude, config.ActionCodex, config.ActionResume}, // default action
-	{"nerd", "plain"}, // icons
+	{config.CodexCLI, config.CodexDesktop},                                          // codex opens in
+	{"nerd", "plain"},                                                               // icons
 }
 
-const settingsRowCount = 3 // enum rows above + the projects-dir editor
+const settingsRowCount = 4 // enum rows above + the projects-dir editor
 
 func (m Model) settingValue(row int) string {
-	if row == 0 {
+	switch row {
+	case 0:
 		return m.cfg.Defaults.Action
+	case 1:
+		return m.cfg.Defaults.CodexApp
 	}
 	return m.cfg.UI.Icons
 }
@@ -546,6 +550,8 @@ func (m Model) cycleSetting(delta int) (tea.Model, tea.Cmd) {
 	case 0:
 		_ = m.cfg.SetDefaultAction(next)
 	case 1:
+		_ = m.cfg.SetCodexApp(next)
+	case 2:
 		_ = m.cfg.SetIcons(next)
 		m.ic = nerdIcons
 		if next == "plain" {
@@ -1171,9 +1177,10 @@ func (m Model) renderPreviewLines(cw int) []string {
 // current value highlighted in a segmented control.
 func (m Model) renderSettings() []string {
 	cw := max(10, m.width-4)
-	labels := []string{"default action", "icons", "projects dir"}
+	labels := []string{"default action", "codex opens in", "icons", "projects dir"}
 	notes := []string{
 		"what enter does when a project has no per-project action",
+		"cli runs codex in the terminal; desktop opens the Codex app",
 		"nerd needs a Nerd Font (nerdfonts.com); plain works everywhere",
 		"where ^t creates new projects",
 	}

@@ -231,3 +231,43 @@ func TestProjectsDirDefaultAndExpansion(t *testing.T) {
 		t.Errorf("absolute path should pass through, got %q", got)
 	}
 }
+
+func TestCodexAppDefaultsToCLIAndRejectsJunk(t *testing.T) {
+	dir := setupDir(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.CodexApp != CodexCLI {
+		t.Errorf("default codex_app = %q, want %q", cfg.Defaults.CodexApp, CodexCLI)
+	}
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte("[defaults]\ncodex_app = \"gui\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.CodexApp != CodexCLI {
+		t.Errorf("unknown value should fall back to cli, got %q", cfg.Defaults.CodexApp)
+	}
+}
+
+func TestSetCodexAppPersists(t *testing.T) {
+	setupDir(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SetCodexApp(CodexDesktop); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Defaults.CodexApp != CodexDesktop {
+		t.Errorf("codex_app should persist, got %q", again.Defaults.CodexApp)
+	}
+}

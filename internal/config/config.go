@@ -21,6 +21,12 @@ const (
 	ActionResume = "resume" // reopen the project's last agent session (cd if none)
 )
 
+// CodexApp values: what the codex action launches.
+const (
+	CodexCLI     = "cli"     // the `codex` command, in the project directory
+	CodexDesktop = "desktop" // the Codex desktop app, via a codex:// deep link
+)
+
 // DefaultIgnore is used when the config file does not set `ignore`.
 var DefaultIgnore = []string{
 	"**/.worktrees/**",
@@ -33,6 +39,7 @@ type Defaults struct {
 	Action      string   `toml:"action"`
 	ClaudeArgs  []string `toml:"claude_args"`
 	CodexArgs   []string `toml:"codex_args"`
+	CodexApp    string   `toml:"codex_app"` // "cli" or "desktop"
 	Command     string   `toml:"command"`
 	ProjectsDir string   `toml:"projects_dir"` // where ^T creates new projects
 }
@@ -159,6 +166,9 @@ func Load() (*Config, error) {
 	if cfg.UI.Icons != "plain" {
 		cfg.UI.Icons = "nerd"
 	}
+	if cfg.Defaults.CodexApp != CodexDesktop {
+		cfg.Defaults.CodexApp = CodexCLI
+	}
 	if cfg.Defaults.ProjectsDir == "" {
 		cfg.Defaults.ProjectsDir = "~/Code"
 	}
@@ -234,6 +244,15 @@ func (c *Config) SetDefaultAction(action string) error {
 		return err
 	}
 	c.Defaults.Action = action
+	return nil
+}
+
+// SetCodexApp writes the codex launch target into config.toml and applies it.
+func (c *Config) SetCodexApp(app string) error {
+	if err := c.editConfigKey("defaults", "codex_app", app); err != nil {
+		return err
+	}
+	c.Defaults.CodexApp = app
 	return nil
 }
 
