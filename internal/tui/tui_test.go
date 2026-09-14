@@ -538,3 +538,15 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+func TestPreviewRendersMarkdown(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = next.(Model)
+	next, _ = m.Update(previewMsg{"/w/prior-analyst", preview.Snippet{Agent: "claude", Role: "assistant", Text: "- **私有仓库**，用 `pip` 装"}})
+	m = next.(Model)
+	joined := strings.Join(m.renderPreviewLines(m.previewWidth()-4), "\n")
+	if !strings.Contains(joined, "▏ • 私有仓库，用 pip 装") {
+		t.Fatalf("preview should render markdown, got:\n%s", joined)
+	}
+}

@@ -55,6 +55,7 @@ var (
 	pinC     = lipgloss.AdaptiveColor{Light: "#df8e1d", Dark: "#f9e2af"} // yellow
 	gitC     = lipgloss.AdaptiveColor{Light: "#40a02b", Dark: "#a6e3a1"} // green
 	dirtyC   = lipgloss.AdaptiveColor{Light: "#e64553", Dark: "#eba0ac"} // maroon
+	codeC    = lipgloss.AdaptiveColor{Light: "#179299", Dark: "#94e2d5"} // teal: code in previews
 	dimC     = lipgloss.AdaptiveColor{Light: "#9ca0b0", Dark: "#6c7086"}
 	borderC  = lipgloss.AdaptiveColor{Light: "#ccd0da", Dark: "#45475a"}
 	surfaceC = lipgloss.AdaptiveColor{Light: "#e6e9ef", Dark: "#313244"} // chips + selection band
@@ -1154,7 +1155,7 @@ func (m Model) renderPreviewLines(cw int) []string {
 		if snip.Text != "" {
 			add(labelSt.Render(fmt.Sprintf("last session · %s · %s", snip.Agent, snip.Role)))
 			quote := borderSt.Render("▏ ")
-			for _, l := range strings.Split(lipgloss.NewStyle().Width(cw-2).Render(snip.Text), "\n") {
+			for _, l := range renderMarkdown(snip.Text, cw-2) {
 				add(quote + l)
 			}
 		} else {
